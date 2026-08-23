@@ -17,15 +17,22 @@ fi
 
 export PYTHONPATH="$DIR/backend:$PYTHONPATH"
 
-# Mode check: if argument is 'dev', start both backend and frontend dev server
+# Mode check: if argument is 'dev', start backend, frontend, and script_executor
 if [ "$1" == "dev" ]; then
-    echo "🚀 Starting in Development Mode (FastAPI + Vite HMR)..."
+    echo "🚀 Starting in Development Mode (FastAPI + Vite HMR + Sandbox Executor)..."
     (cd "$DIR/backend" && python run_backend.py) &
     BACKEND_PID=$!
     (cd "$DIR/frontend" && npm run dev) &
     FRONTEND_PID=$!
 
-    trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null" EXIT
+    EXECUTOR_PID=""
+    if [ -d "$DIR/script_executor" ]; then
+        echo "🛡️  Starting Tracee eBPF Sandbox Executor on port 3000..."
+        (cd "$DIR/script_executor" && npm start) &
+        EXECUTOR_PID=$!
+    fi
+
+    trap "kill $BACKEND_PID $FRONTEND_PID $EXECUTOR_PID 2>/dev/null" EXIT
     wait
 else
     echo "🚀 Starting Full Web Application on http://localhost:8000 ..."
