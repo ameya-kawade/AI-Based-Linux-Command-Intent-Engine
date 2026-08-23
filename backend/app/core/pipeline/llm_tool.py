@@ -21,10 +21,12 @@ logger = logging.getLogger(__name__)
 # Economical models ranked by cost and efficiency (cheapest first)
 CHEAP_GROQ_MODELS_PRIORITY = [
     "groq/compound-mini",      # Cheapest, low-latency, high-efficiency compound mini
-    "openai/gpt-oss-20b",      # Fast 20B
-    "qwen/qwen3.6-27b",        # Qwen 27B
-    "groq/compound",           # Full compound
-    "openai/gpt-oss-120b",     # 120B Large
+    "openai/gpt-oss-20b",      # Fast, lightweight 20B model
+    "qwen/qwen3.6-27b",        # Qwen 27B reasoning model
+    "groq/compound",           # Full compound model
+    "openai/gpt-oss-120b",     # 120B Large model
+    "llama-3.3-70b-versatile", # Meta Llama 3.3 70B
+    "llama-3.1-8b-instant",    # Meta Llama 3.1 8B
 ]
 
 # Enriched, holistic system prompt directing the SLM/LLM to explain real-world operational impact and propose safer alternatives
@@ -358,6 +360,36 @@ class LLMAnalyzerTool(BasePipelineTool):
 
         return "\n".join(lines)
 
+    def _parse_json_safe(self, content: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Safely parses JSON responses from LLMs, handling markdown fences, <think> blocks, and extra text."""
+        if not content:
+            return None
+        cleaned = content.strip()
+        import re
+        # Strip <think>...</think> reasoning blocks
+        cleaned = re.sub(r'<think>.*?</think>', '', cleaned, flags=re.DOTALL).strip()
+        # Strip markdown fences ```json ... ``` or ``` ... ```
+        match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', cleaned)
+        if match:
+            cleaned = match.group(1).strip()
+        # Attempt direct JSON parse
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        # Attempt to isolate outermost curly braces { ... }
+        brace_match = re.search(r'(\{[\s\S]*\})', cleaned)
+        if brace_match:
+            try:
+                parsed = json.loads(brace_match.group(1))
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+        return None
+
     def _extract_intent_string(self, data: Dict[str, Any]) -> str:
         """Parses structured JSON response into a rich, multi-sentence intent description."""
         summary = ""
@@ -449,11 +481,13 @@ class LLMAnalyzerTool(BasePipelineTool):
             )
 
             content = response.choices[0].message.content
-            data = json.loads(content)
-
-            self._prompt_cache[cache_key] = data
-            self._populate_context_from_llm_data(context, data)
-            context.tools_executed.append(f"{provider} ({model_name})")
+            data = self._parse_json_safe(content)
+            if data:
+                self._prompt_cache[cache_key] = data
+                self._populate_context_from_llm_data(context, data)
+                context.tools_executed.append(f"{provider} ({model_name})")
+            else:
+                raise ValueError(f"Failed to parse structured JSON from {provider} output")
         except Exception as e:
             logger.warning(f"LLM inference error for '{cmd}' via {provider} ({model_name}): {e}")
             if provider == "Groq":
@@ -475,11 +509,12 @@ class LLMAnalyzerTool(BasePipelineTool):
                                     timeout=self.timeout,
                                     max_tokens=600,
                                 )
-                                data = json.loads(res.choices[0].message.content)
-                                self._prompt_cache[cache_key] = data
-                                self._populate_context_from_llm_data(context, data)
-                                context.tools_executed.append(f"Groq ({alt_m})")
-                                return
+                                data = self._parse_json_safe(res.choices[0].message.content)
+                                if data:
+                                    self._prompt_cache[cache_key] = data
+                                    self._populate_context_from_llm_data(context, data)
+                                    context.tools_executed.append(f"Groq ({alt_m})")
+                                    return
                             except Exception:
                                 pass
 

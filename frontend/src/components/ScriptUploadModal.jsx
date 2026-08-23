@@ -66,13 +66,14 @@ export default function ScriptUploadModal({
   };
 
   const handleSaveAndAttach = (autoRun = false) => {
-    onAttach({
+    const scriptObj = {
       name: scriptName.trim() || 'custom_script.sh',
       content: scriptContent
-    });
+    };
+    onAttach(scriptObj);
     onClose();
     if (autoRun && onRunAnalysisDirectly) {
-      onRunAnalysisDirectly();
+      onRunAnalysisDirectly(scriptObj);
     }
   };
 

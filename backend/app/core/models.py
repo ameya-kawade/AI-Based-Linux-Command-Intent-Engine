@@ -20,7 +20,7 @@ class NetworkImpact(BaseModel):
 class SafeCmdVerdict(BaseModel):
     allowed: bool = Field(..., description="Whether the command passed safecmd allowlist validation")
     disallowed_target: Optional[str] = Field(default=None, description="Disallowed command or path if blocked")
-    disallowed_type: Optional[Literal["command", "destination", "syntax", "error"]] = Field(
+    disallowed_type: Optional[str] = Field(
         default=None, description="Category of the disallowance"
     )
     message: str = Field(default="", description="Human-readable policy message from safecmd")
@@ -30,6 +30,13 @@ class SafeCmdVerdict(BaseModel):
     redirects: List[Tuple[str, str]] = Field(
         default_factory=list, description="AST-extracted output/input redirections (e.g. ('>', 'file.txt'))"
     )
+    rule_violations: List[str] = Field(
+        default_factory=list, description="Specific security rule violations identified by shfmt AST inspection"
+    )
+    ast_operators: List[str] = Field(
+        default_factory=list, description="AST operators extracted by shfmt (e.g. '|', '&&', ';')"
+    )
+    policy_level: str = Field(default="STRICT_AST", description="Policy enforcement level")
 
 
 class VectorSimilarityMatch(BaseModel):

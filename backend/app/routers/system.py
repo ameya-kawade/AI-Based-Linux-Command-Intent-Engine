@@ -39,6 +39,7 @@ async def get_system_status(
         for t in analyzer.pipeline.tools
     ]
 
+    cc_status = vector_store.get_status()
     return {
         "status": "online",
         "provider_status": analyzer.get_provider_status(),
@@ -48,7 +49,9 @@ async def get_system_status(
         "tools": tools,
         "current_cwd": executor.current_cwd,
         "prompt_path": executor.get_prompt_path(),
-        "cmdcaliper": vector_store.get_status(),
+        "cmdcaliper": cc_status,
+        "cmdcaliper_available": bool(cc_status.get("available", False)),
+        "cmdcaliper_vectors": cc_status.get("vector_count", 0),
         "host": {
             "hostname": socket.gethostname(),
             "user": getpass.getuser(),
@@ -56,6 +59,8 @@ async def get_system_status(
             "python_version": platform.python_version(),
         },
         "sandbox": sandbox_health,
+        "sandbox_available": bool(sandbox_health.get("available", False)),
+        "docker_available": bool(sandbox_health.get("docker_available", False)),
     }
 
 

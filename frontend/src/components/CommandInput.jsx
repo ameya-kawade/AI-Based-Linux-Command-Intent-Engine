@@ -72,6 +72,7 @@ export default function CommandInput({
   useEffect(() => {
     if (!command) {
       setDetectedScriptName(null);
+      setAttachedScript(null);
       return;
     }
     const scriptRegex = /(?:^|[;&|]\s*)(?:bash|sh|zsh|dash|source|\.)\s+['"]?([^\s;&|'"]+\.(?:sh|bash|py|pl|rb))['"]?|(?:^|[;&|]\s*)\.?\/([^\s;&|'"]+\.(?:sh|bash|py))/i;
@@ -80,8 +81,14 @@ export default function CommandInput({
       const fullPath = match[1] || match[2] || '';
       const baseName = fullPath.split('/').pop();
       setDetectedScriptName(baseName);
+      if (attachedScript && attachedScript.name !== baseName) {
+        setAttachedScript(prev => prev ? { ...prev, name: baseName } : null);
+      }
     } else {
       setDetectedScriptName(null);
+      if (attachedScript) {
+        setAttachedScript(null);
+      }
     }
   }, [command]);
 
@@ -89,7 +96,7 @@ export default function CommandInput({
     if (e.key === 'Enter' && !e.shiftKey) {
       if (!isMultiline) {
         e.preventDefault();
-        onAnalyze();
+        onAnalyze(command, attachedScript);
       }
     } else if (e.key === 'Escape') {
       setShowPresets(false);
@@ -99,12 +106,13 @@ export default function CommandInput({
   const loadPresetScript = (type, autoRun = false) => {
     const sName = detectedScriptName || (type === 'malicious' ? 'deploy_exploit.sh' : 'build_bundle.sh');
     const sContent = type === 'malicious' ? SAMPLE_MALICIOUS_SCRIPT : SAMPLE_BENIGN_SCRIPT;
-    setAttachedScript({
+    const scriptObj = {
       name: sName,
       content: sContent
-    });
+    };
+    setAttachedScript(scriptObj);
     if (autoRun) {
-      setTimeout(() => onAnalyze(), 50);
+      onAnalyze(command, scriptObj);
     }
   };
 
@@ -215,16 +223,14 @@ export default function CommandInput({
                         key={idx}
                         type="button"
                         onClick={() => {
+                          const scriptObj = {
+                            name: sp.scriptName,
+                            content: sp.scriptType === 'malicious' ? SAMPLE_MALICIOUS_SCRIPT : SAMPLE_BENIGN_SCRIPT
+                          };
                           setCommand(sp.command);
-                          setAttachedScript({
-                            name: sp.scriptName,
-                            content: sp.scriptType === 'malicious' ? SAMPLE_MALICIOUS_SCRIPT : SAMPLE_BENIGN_SCRIPT
-                          });
+                          setAttachedScript(scriptObj);
                           setShowPresets(false);
-                          setTimeout(() => onAnalyze(sp.command, {
-                            name: sp.scriptName,
-                            content: sp.scriptType === 'malicious' ? SAMPLE_MALICIOUS_SCRIPT : SAMPLE_BENIGN_SCRIPT
-                          }), 60);
+                          onAnalyze(sp.command, scriptObj);
                         }}
                         className="w-full text-left p-2 rounded-lg hover:bg-brand-100/60 dark:hover:bg-indigo-900/40 transition-colors flex items-center justify-between gap-2 border border-transparent hover:border-brand-200 dark:hover:border-indigo-800/60 group"
                       >
@@ -243,32 +249,37 @@ export default function CommandInput({
 
                   {/* Standard Presets */}
                   <div className="space-y-1">
-                    {presets.map((preset, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setShowPresets(false);
-                          onSelectPreset(preset.command);
-                        }}
-                        className="w-full text-left p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors flex items-center justify-between gap-2 border border-transparent hover:border-slate-200 dark:hover:border-slate-700/80 group"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate flex items-center gap-1.5">
-                            {getRiskIcon(preset.expected_risk)}
-                            <span>{preset.title || preset.command}</span>
+                    {presets.map((preset, idx) => {
+                      const cmdText = preset.command || preset.cmd || "";
+                      const titleText = preset.title || preset.label || cmdText;
+                      const riskLevel = preset.expected_risk || "SAFE";
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setShowPresets(false);
+                            onSelectPreset(cmdText);
+                          }}
+                          className="w-full text-left p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors flex items-center justify-between gap-2 border border-transparent hover:border-slate-200 dark:hover:border-slate-700/80 group"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate flex items-center gap-1.5">
+                              {getRiskIcon(riskLevel)}
+                              <span className="font-semibold">{titleText}</span>
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate group-hover:text-brand-600 dark:group-hover:text-cyan-300">
+                              $ {cmdText}
+                            </div>
                           </div>
-                          <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate group-hover:text-brand-600 dark:group-hover:text-cyan-300">
-                            $ {preset.command}
-                          </div>
-                        </div>
-                        {preset.expected_risk && (
-                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${getRiskBadge(preset.expected_risk)} font-bold shrink-0`}>
-                            {preset.expected_risk}
-                          </span>
-                        )}
-                      </button>
-                    ))}
+                          {riskLevel && (
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${getRiskBadge(riskLevel)} font-bold shrink-0`}>
+                              {riskLevel}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -319,6 +330,7 @@ export default function CommandInput({
                     type="button"
                     onClick={() => {
                       setCommand('');
+                      setAttachedScript(null);
                       inputRef.current?.focus();
                     }}
                     className="absolute right-3 p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
@@ -333,7 +345,7 @@ export default function CommandInput({
 
           <button
             type="button"
-            onClick={onAnalyze}
+            onClick={() => onAnalyze(command, attachedScript)}
             disabled={!command.trim() || isAnalyzing}
             className={`px-5 sm:px-7 py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md select-none whitespace-nowrap ${
               !command.trim() || isAnalyzing
@@ -471,8 +483,8 @@ export default function CommandInput({
         onAttach={(scriptObj) => setAttachedScript(scriptObj)}
         detectedScriptName={detectedScriptName || ''}
         initialScriptContent={attachedScript?.content || ''}
-        onRunAnalysisDirectly={() => {
-          setTimeout(() => onAnalyze(), 50);
+        onRunAnalysisDirectly={(scriptObj) => {
+          onAnalyze(command, scriptObj);
         }}
       />
     </div>
