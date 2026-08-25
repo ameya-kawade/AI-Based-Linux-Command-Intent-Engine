@@ -136,6 +136,22 @@ class ScriptAnalysisVerdict(BaseModel):
     execution_time_ms: int = Field(default=0, description="Sandbox run duration in ms")
 
 
+
+class PipelineOperatorInfo(BaseModel):
+    operator: str = Field(..., description="Operator string (e.g. '|', '&&', '||', ';', '&', '|&')")
+    name: str = Field(default="", description="Operator name (e.g. 'Pipe', 'Logical AND', 'Sequential')")
+    description: str = Field(default="", description="Explanation of what this operator does in the pipeline")
+
+
+class PipelineStage(BaseModel):
+    stage_index: int = Field(default=0, description="0-indexed position in execution sequence")
+    raw_command: str = Field(..., description="Raw command substring for this stage")
+    command_explanation: CommandExplanation = Field(..., description="Full manpage explanation and flag breakdown")
+    trailing_operator: Optional[PipelineOperatorInfo] = Field(
+        default=None, description="Operator connecting this stage to the next stage"
+    )
+
+
 class IntentAnalysis(BaseModel):
     command: str = Field(..., description="Original command line string")
     intent: str = Field(..., description="Plain-English explanation of what this command will do")
@@ -154,6 +170,15 @@ class IntentAnalysis(BaseModel):
     cmdcaliper: Optional[CmdCaliperVerdict] = Field(default=None, description="CmdCaliper semantic vector safety analysis")
     manpage_explanation: Optional[CommandExplanation] = Field(
         default=None, description="Explainshell manpage and flag breakdown"
+    )
+    pipeline_stages: List[PipelineStage] = Field(
+        default_factory=list, description="Ordered pipeline execution stages with commands and connectors"
+    )
+    pipeline_commands: List[CommandExplanation] = Field(
+        default_factory=list, description="All extracted commands in pipeline/chained order with their flags"
+    )
+    pipeline_operators: List[PipelineOperatorInfo] = Field(
+        default_factory=list, description="Operators detected between commands in the pipeline"
     )
     script_analysis: Optional[ScriptAnalysisVerdict] = Field(
         default=None, description="Aqua Tracee eBPF script intent and runtime trace verdict"

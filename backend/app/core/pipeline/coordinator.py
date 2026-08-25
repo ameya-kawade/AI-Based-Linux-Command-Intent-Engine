@@ -73,7 +73,15 @@ class PipelineCoordinator:
         script_name: Optional[str] = None,
     ) -> IntentAnalysis:
         start_time = time.perf_counter()
-        clean_cmd = command.strip()
+        
+        try:
+            from app.core.pipeline.normalizer import DeobfuscationEngine
+            engine = DeobfuscationEngine()
+            clean_cmd = engine.normalize(command.strip())
+            is_unresolvable = engine.unresolvable
+        except Exception:
+            clean_cmd = command.strip()
+            is_unresolvable = False
 
         if not clean_cmd:
             return IntentAnalysis(
@@ -102,6 +110,9 @@ class PipelineCoordinator:
             script_content=script_content,
             script_name=script_name,
         )
+
+        if is_unresolvable:
+            context.warnings.append("[Deobfuscation Threat] Payload relies on unresolvable dynamic state or obfuscation (STATE: UNRESOLVABLE_DYNAMIC_OBFUSCATION).")
 
         # Execute tools sequentially through the pipeline
         for tool in self.tools:
@@ -168,6 +179,9 @@ class PipelineCoordinator:
 
         # 7. Synthesize Risk Level with Strict Safety Invariants
         risk: ImpactLevel = context.heuristic_risk or "SAFE"
+        if any("UNRESOLVABLE_DYNAMIC_OBFUSCATION" in w for w in warnings):
+            risk = "CRITICAL"
+
         if context.llm_risk in ("SAFE", "CAUTION", "CRITICAL"):
             risk_order = {"SAFE": 0, "CAUTION": 1, "CRITICAL": 2}
             if risk_order.get(context.llm_risk, 0) > risk_order.get(risk, 0):
@@ -244,6 +258,9 @@ class PipelineCoordinator:
             safecmd=context.safecmd_verdict,
             cmdcaliper=context.cmdcaliper_verdict,
             manpage_explanation=context.manpage_explanation,
+            pipeline_stages=context.pipeline_stages,
+            pipeline_commands=context.pipeline_commands,
+            pipeline_operators=context.pipeline_operators,
             script_analysis=context.script_verdict,
         )
 

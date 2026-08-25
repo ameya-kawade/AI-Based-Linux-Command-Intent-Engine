@@ -20,6 +20,8 @@ import {
   BookOpen, 
   Info,
   Layers,
+  Workflow,
+  Split,
   Sparkles,
   Flame,
   Clock,
@@ -55,6 +57,14 @@ export default function ImpactCard({ analysis, onUseAlternative }) {
   const safecmd = analysis.safecmd;
   const cmdcaliper = analysis.cmdcaliper;
   const manpage = analysis.manpage_explanation;
+  const stages = (analysis.pipeline_stages && analysis.pipeline_stages.length > 0)
+    ? analysis.pipeline_stages
+    : (manpage ? [{
+        stage_index: 0,
+        raw_command: analysis.command,
+        command_explanation: manpage,
+        trailing_operator: null
+      }] : []);
   const scriptAnalysis = analysis.script_analysis;
   const fs = analysis.filesystem || { created: [], modified: [], deleted: [] };
   const net = analysis.network || { outbound_endpoints: [], ports_opened: [], downloads: [] };
@@ -200,7 +210,7 @@ export default function ImpactCard({ analysis, onUseAlternative }) {
           <span>All Modules</span>
         </button>
 
-        {manpage && (
+        {(stages && stages.length > 0) && (
           <button
             onClick={() => setActiveTab("manpage")}
             className={`px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1.5 whitespace-nowrap ${
@@ -612,93 +622,257 @@ export default function ImpactCard({ analysis, onUseAlternative }) {
         </div>
       )}
 
-      {/* Ground-Truth Manpage Flag Parsing (Explainshell & man7.org) */}
-      {manpage && (activeTab === "all" || activeTab === "manpage") && (
-        <div className="my-4 bg-white/90 dark:bg-slate-900/70 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800/90 shadow-md">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3.5">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-brand-500/10 dark:bg-cyan-500/10 text-brand-600 dark:text-cyan-400 border border-brand-500/20 dark:border-cyan-500/20">
-                <BookOpen className="w-4 h-4" />
-              </div>
-              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2 font-mono">
-                <span>Manpage Syntax & Flag Breakdown:</span>
-                <span className="text-brand-700 dark:text-cyan-300 font-mono font-bold">{manpage.command}</span>
-              </h4>
-              {manpage.manpage_source && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                  {manpage.manpage_source.includes("man7") ? "man7.org Manual" : "Explainshell DB"}
-                </span>
-              )}
-            </div>
-            
+      {/* Ground-Truth Manpage & Pipeline Command Flow (Explainshell & man7.org) */}
+      {stages && stages.length > 0 && (activeTab === "all" || activeTab === "manpage") && (
+        <div className="my-4 bg-white/90 dark:bg-slate-900/70 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800/90 shadow-md space-y-5">
+          
+          {/* Main Section Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800/80">
             <div className="flex items-center gap-2.5">
-              {manpage.manpage_url && (
-                <a
-                  href={manpage.manpage_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-mono text-brand-600 dark:text-cyan-400 hover:underline flex items-center gap-1 px-2.5 py-1 rounded-xl bg-brand-50 dark:bg-cyan-950/40 border border-brand-200 dark:border-cyan-800/60 transition-colors"
-                  title="Open official manual page on man7.org"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>man7.org ↗</span>
-                </a>
-              )}
-              {manpage.used_flags && manpage.used_flags.length > 0 && (
-                <button 
-                  onClick={() => setShowFullFlags(!showFullFlags)}
-                  className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 font-mono transition-colors"
-                >
-                  <span>{showFullFlags ? "Collapse Flags" : "Expand Flags"}</span>
-                  {showFullFlags ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </button>
-              )}
+              <div className="p-1.5 rounded-lg bg-brand-500/10 dark:bg-cyan-500/10 text-brand-600 dark:text-cyan-400 border border-brand-500/20 dark:border-cyan-500/20 shadow-sm">
+                <Workflow className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2 font-mono">
+                  <span>Command Pipeline & Ground-Truth Manual</span>
+                  {stages.length > 1 && (
+                    <span className="px-2 py-0.5 rounded-full bg-brand-50 dark:bg-cyan-950/80 text-brand-700 dark:text-cyan-300 border border-brand-200 dark:border-cyan-800 text-[10px] font-bold">
+                      {stages.length} Pipeline Stages
+                    </span>
+                  )}
+                </h4>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowFullFlags(!showFullFlags)}
+                className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 font-mono transition-colors"
+              >
+                <span>{showFullFlags ? "Collapse All Flags" : "Expand All Flags"}</span>
+                {showFullFlags ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
             </div>
           </div>
 
-          {/* Synopsis */}
-          {manpage.synopsis && (
-            <div className="bg-slate-50 dark:bg-obsidian-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 font-mono text-xs text-slate-800 dark:text-slate-300 mb-3.5 overflow-x-auto">
-              <span className="text-brand-600 dark:text-cyan-400 mr-2 font-bold">$</span>
-              <span className="text-slate-700 dark:text-slate-200">{manpage.synopsis}</span>
-            </div>
-          )}
+          {/* Interactive Multi-Command Visual Pipeline Flow Ribbon (if >1 stage) */}
+          {stages.length > 1 && (
+            <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-obsidian-950/80 border border-slate-200 dark:border-slate-800/80 shadow-inner">
+              <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5 flex items-center gap-1.5">
+                <Split className="w-3.5 h-3.5 text-brand-600 dark:text-cyan-400" />
+                <span>Execution Pipeline Sequence:</span>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                {stages.map((stg, sIdx) => {
+                  const cmdExp = stg.command_explanation;
+                  const trailingOp = stg.trailing_operator;
+                  return (
+                    <React.Fragment key={sIdx}>
+                      {/* Command Node */}
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm shrink-0 font-mono text-xs">
+                        <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-cyan-950 text-brand-700 dark:text-cyan-300 flex items-center justify-center text-[10px] font-bold border border-brand-200 dark:border-cyan-800">
+                          {sIdx + 1}
+                        </span>
+                        <span className="font-bold text-slate-800 dark:text-slate-100">{cmdExp.command}</span>
+                        {cmdExp.nested_command && (
+                          <span className="text-[11px] text-brand-600 dark:text-cyan-400 font-semibold">
+                            ↳ {cmdExp.nested_command.command}
+                          </span>
+                        )}
+                        {cmdExp.used_flags?.length > 0 && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            {cmdExp.used_flags.length} flag{cmdExp.used_flags.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
 
-          {/* Used Flags Breakdown Cards */}
-          {showFullFlags && manpage.used_flags && manpage.used_flags.length > 0 && (
-            <div className="space-y-2.5">
-              {manpage.used_flags.map((f, idx) => (
-                <div key={idx} className="bg-slate-50/70 dark:bg-obsidian-950/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/90 text-xs font-sans hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2 font-mono font-bold">
-                      <span className="px-2 py-0.5 rounded-md bg-brand-50 dark:bg-cyan-950/90 border border-brand-200 dark:border-cyan-700 text-brand-700 dark:text-cyan-300 font-mono text-xs shadow-sm">
-                        {f.flag}
-                      </span>
-                      {f.canonical_name && f.canonical_name !== f.flag && (
-                        <span className="text-slate-500 dark:text-slate-400 text-[11px] font-normal">({f.canonical_name})</span>
+                      {/* Operator Connector */}
+                      {trailingOp && (
+                        <div className="flex items-center gap-1 shrink-0" title={trailingOp.description}>
+                          <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-mono font-bold shadow-sm flex items-center gap-1">
+                            <span>{trailingOp.operator}</span>
+                            <span className="text-[10px] uppercase font-normal opacity-80">({trailingOp.name})</span>
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
+                        </div>
                       )}
-                    </div>
-                    {f.has_argument && (
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
-                        Arg: {f.argument_value || "Required"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-slate-700 dark:text-slate-200 leading-relaxed font-sans">{f.summary || f.description}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Nested command if wrapper */}
-          {manpage.nested_command && (
-            <div className="mt-3.5 pt-3 border-t border-slate-200 dark:border-slate-800/80">
-              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 block mb-1.5">Nested Subcommand Execution:</span>
-              <div className="bg-slate-50 dark:bg-obsidian-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-mono text-brand-700 dark:text-cyan-300">
-                {manpage.nested_command.command} {manpage.nested_command.synopsis && `— ${manpage.nested_command.synopsis}`}
+                    </React.Fragment>
+                  );
+                })}
               </div>
             </div>
           )}
+
+          {/* Sequential Stage Cards */}
+          <div className="space-y-5">
+            {stages.map((stg, sIdx) => {
+              const cmdExp = stg.command_explanation;
+              const trailingOp = stg.trailing_operator;
+
+              return (
+                <div key={sIdx} className="space-y-3">
+                  
+                  {/* Stage Card Container */}
+                  <div className="p-4 rounded-xl bg-slate-50/50 dark:bg-obsidian-950/60 border border-slate-200 dark:border-slate-800/90 shadow-sm relative">
+                    
+                    {/* Stage Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-2">
+                        {stages.length > 1 && (
+                          <span className="px-2 py-0.5 rounded-md bg-brand-100 dark:bg-cyan-950/90 text-brand-800 dark:text-cyan-300 font-mono text-[11px] font-bold border border-brand-200 dark:border-cyan-800">
+                            Stage {sIdx + 1}
+                          </span>
+                        )}
+                        <span className="text-xs font-mono font-bold text-brand-700 dark:text-cyan-300">
+                          {cmdExp.command}
+                        </span>
+                        {cmdExp.manpage_source && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            {cmdExp.manpage_source.includes("man7") ? "man7.org" : "Explainshell"}
+                          </span>
+                        )}
+                      </div>
+
+                      {cmdExp.manpage_url && (
+                        <a
+                          href={cmdExp.manpage_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] font-mono text-brand-600 dark:text-cyan-400 hover:underline flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-colors"
+                          title="Open manpage"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>{cmdExp.command} man7.org ↗</span>
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Raw Stage Command Snippet */}
+                    <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 font-mono text-xs text-slate-800 dark:text-slate-200 mb-2.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2 overflow-x-auto">
+                        <span className="text-brand-600 dark:text-cyan-400 font-bold">$</span>
+                        <span>{stg.raw_command}</span>
+                      </div>
+                    </div>
+
+                    {/* Synopsis */}
+                    {cmdExp.synopsis && (
+                      <p className="text-xs text-slate-700 dark:text-slate-300 font-sans mb-3 leading-relaxed">
+                        <strong>Synopsis:</strong> {cmdExp.synopsis}
+                      </p>
+                    )}
+
+                    {/* Used Flags for this command */}
+                    {showFullFlags && cmdExp.used_flags && cmdExp.used_flags.length > 0 && (
+                      <div className="space-y-2 mt-2">
+                        <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          Flags for {cmdExp.command} ({cmdExp.used_flags.length}):
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                          {cmdExp.used_flags.map((f, fIdx) => (
+                            <div key={fIdx} className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-sans hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <div className="flex items-center gap-2 font-mono font-bold">
+                                  <span className="px-2 py-0.5 rounded-md bg-brand-50 dark:bg-cyan-950/90 border border-brand-200 dark:border-cyan-700 text-brand-700 dark:text-cyan-300 font-mono text-xs shadow-sm">
+                                    {f.flag}
+                                  </span>
+                                  {f.canonical_name && f.canonical_name !== f.flag && (
+                                    <span className="text-slate-500 dark:text-slate-400 text-[11px] font-normal">({f.canonical_name})</span>
+                                  )}
+                                </div>
+                                {f.has_argument && (
+                                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                    Arg: {f.argument_value || "Required"}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-slate-700 dark:text-slate-200 leading-relaxed font-sans">{f.summary || f.description}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Embedded Nested Command (e.g. wrapper xargs executing rm -rf) */}
+                    {cmdExp.nested_command && (
+                      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/80 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-brand-600 dark:text-cyan-400" />
+                            <span>Nested Subcommand Execution:</span>
+                            <span className="text-brand-700 dark:text-cyan-300 font-mono lowercase">({cmdExp.nested_command.command})</span>
+                          </span>
+                          {cmdExp.nested_command.manpage_url && (
+                            <a
+                              href={cmdExp.nested_command.manpage_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[11px] font-mono text-brand-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+                            >
+                              <span>{cmdExp.nested_command.command} manual ↗</span>
+                            </a>
+                          )}
+                        </div>
+
+                        {cmdExp.nested_command.synopsis && (
+                          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-700 dark:text-slate-300">
+                            <span className="text-brand-600 dark:text-cyan-400 font-bold mr-1">↳</span>
+                            <span>{cmdExp.nested_command.command}: {cmdExp.nested_command.synopsis}</span>
+                          </div>
+                        )}
+
+                        {/* Nested Flags */}
+                        {showFullFlags && cmdExp.nested_command.used_flags && cmdExp.nested_command.used_flags.length > 0 && (
+                          <div className="space-y-1.5 pl-2 border-l-2 border-brand-300 dark:border-cyan-800">
+                            <div className="text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400 uppercase">
+                              Flags for nested {cmdExp.nested_command.command}:
+                            </div>
+                            <div className="grid grid-cols-1 gap-1.5">
+                              {cmdExp.nested_command.used_flags.map((nf, nfIdx) => (
+                                <div key={nfIdx} className="bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs">
+                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                    <div className="flex items-center gap-2 font-mono font-bold">
+                                      <span className="px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs">
+                                        {nf.flag}
+                                      </span>
+                                      {nf.canonical_name && nf.canonical_name !== nf.flag && (
+                                        <span className="text-slate-500 dark:text-slate-400 text-[10px]">({nf.canonical_name})</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="text-slate-700 dark:text-slate-300 text-xs leading-relaxed">{nf.summary || nf.description}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                  </div>
+
+                  {/* Operator Connector Card (Between Stages) */}
+                  {trailingOp && (
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 shadow-sm text-xs font-mono text-indigo-950 dark:text-indigo-200">
+                      <div className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-bold text-sm shrink-0 shadow-sm">
+                        {trailingOp.operator}
+                      </div>
+                      <div>
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span>{trailingOp.name} Operator</span>
+                        </div>
+                        <p className="text-[11px] font-sans text-slate-700 dark:text-slate-300 mt-0.5 leading-relaxed">
+                          {trailingOp.description}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              );
+            })}
+          </div>
+
         </div>
       )}
 

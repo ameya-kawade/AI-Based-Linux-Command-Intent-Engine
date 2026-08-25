@@ -10,6 +10,8 @@ from app.core.models import (
     ImpactLevel,
     CommandExplanation,
     ScriptAnalysisVerdict,
+    PipelineStage,
+    PipelineOperatorInfo,
 )
 
 
@@ -29,6 +31,11 @@ class PipelineContext(BaseModel):
     script_name: Optional[str] = None
     script_reference_detected: Optional[str] = None
     script_verdict: Optional[ScriptAnalysisVerdict] = None
+
+    # Multi-command pipeline decomposition
+    pipeline_stages: List[PipelineStage] = Field(default_factory=list)
+    pipeline_commands: List[CommandExplanation] = Field(default_factory=list)
+    pipeline_operators: List[PipelineOperatorInfo] = Field(default_factory=list)
 
     # Tool outputs accumulated
     safecmd_verdict: Optional[SafeCmdVerdict] = None

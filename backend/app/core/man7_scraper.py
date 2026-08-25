@@ -233,6 +233,41 @@ class Man7GroundTruthEngine:
 
     def explain(self, cmd_line: str) -> Optional[CommandExplanation]:
         """Parses a command line string and extracts manpage descriptions from man7.org."""
+        from app.core.pipeline.parser import PipelineCommandParser
+
+        clean_cmd = cmd_line.strip()
+        if not clean_cmd:
+            return None
+
+        # Check if this stage is a wrapper command (e.g. xargs rm -rf, sudo apt update, nohup python app.py)
+        wrapper_name, wrapper_tokens, nested_cmd_str = PipelineCommandParser.decompose_wrapper_command(clean_cmd)
+
+        if wrapper_name and nested_cmd_str:
+            # Explain the wrapper itself using only its own tokens
+            wrapper_cmd_str = " ".join(wrapper_tokens)
+            wrapper_explanation = self._explain_single_command(wrapper_cmd_str)
+            
+            # Recursively explain the nested command
+            nested_explanation = self.explain(nested_cmd_str)
+
+            if wrapper_explanation:
+                wrapper_explanation.nested_command = nested_explanation
+                return wrapper_explanation
+            elif nested_explanation:
+                # If wrapper manpage couldn't be fetched, construct minimal wrapper explanation
+                return CommandExplanation(
+                    command=wrapper_name,
+                    manpage_source="man7.org",
+                    synopsis=f"Wrapper execution via {wrapper_name}",
+                    used_flags=[],
+                    positional_args=wrapper_tokens[1:],
+                    nested_command=nested_explanation,
+                )
+
+        return self._explain_single_command(clean_cmd)
+
+    def _explain_single_command(self, cmd_line: str) -> Optional[CommandExplanation]:
+        """Extracts manpage documentation and flag breakdowns for a single command execution."""
         clean_cmd = cmd_line.strip()
         if not clean_cmd:
             return None
@@ -245,16 +280,7 @@ class Man7GroundTruthEngine:
         if not tokens:
             return None
 
-        # Filter out common prefix wrappers like sudo, env, etc.
-        cmd_idx = 0
-        wrapper_prefixes = ["sudo", "doas", "nohup", "time", "strace", "authbind"]
-        while cmd_idx < len(tokens) and tokens[cmd_idx] in wrapper_prefixes:
-            cmd_idx += 1
-
-        if cmd_idx >= len(tokens):
-            return None
-
-        base_cmd = tokens[cmd_idx]
+        base_cmd = tokens[0].split("/")[-1]
         man_data = self.fetch_manpage(base_cmd)
         if not man_data:
             return None
@@ -263,7 +289,7 @@ class Man7GroundTruthEngine:
         used_flags: List[FlagExplanation] = []
         positional_args: List[str] = []
 
-        remaining = tokens[cmd_idx + 1 :]
+        remaining = tokens[1:]
         i = 0
         while i < len(remaining):
             tok = remaining[i]
@@ -331,9 +357,9 @@ class Man7GroundTruthEngine:
                 i += 1
                 continue
 
-            # 2. Clustered or single short options -v, -la, -F:, -f file
+            # 2. Clustered or single short options -v, -la, -F:, -f file, -name
             if tok.startswith("-") and len(tok) > 1 and not tok.startswith("--"):
-                # Single flag match (e.g. -F, -v, -f)
+                # Single flag match (e.g. -F, -v, -f, -name)
                 if tok in options_map:
                     opt = options_map[tok]
                     val = None
@@ -369,7 +395,7 @@ class Man7GroundTruthEngine:
                             )
                         )
                     else:
-                        # Clustered short flags (e.g. -czvf, -la)
+                        # Clustered short flags (e.g. -czvf, -la, -rf)
                         chars = tok[1:]
                         matched_cluster = []
                         all_found = True
