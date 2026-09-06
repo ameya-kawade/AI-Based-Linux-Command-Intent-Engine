@@ -1,0 +1,89 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Linux Command Intent Engine - Pipeline Flow",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "full-pipeline",
+        "label": "End-to-end inspection path",
+        "focus": ["user_input", "tree_sitter", "safecmd", "caliper", "ai_reasoner", "invariants", "impact_card"],
+        "note": "Trace a command from user entry to grounded natural language explanation."
+      },
+      {
+        "id": "security-gate",
+        "label": "Invariant enforcement gate",
+        "focus": ["safecmd", "caliper", "invariants", "threat_lock"],
+        "note": "See how deterministic tools override AI reasoning when threats are detected."
+      },
+      {
+        "id": "grounding-path",
+        "label": "Grounded AI synthesis",
+        "focus": ["explainshell", "heuristics", "ai_reasoner", "impact_card"],
+        "note": "Follow manpage flags and heuristic impacts feeding into the LLM reasoner."
+      }
+    ],
+    "output": "pipeline-workflow.html"
+  },
+  "lanes": [
+    { "id": "ingest", "label": "Command Ingestion & Interface" },
+    { "id": "engines", "label": "Deterministic Security Engines" },
+    { "id": "synthesis", "label": "Grounded AI & Safety Invariants", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "normalize", "label": "Parse & Deobfuscate", "fromCol": 0, "toCol": 1 },
+    { "id": "consensus", "label": "Multi-Engine Inspection", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "finalize", "label": "Synthesis & Invariants", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "deobf_stage", "label": "AST Normalization", "lane": "ingest", "fromCol": 0, "toCol": 1 },
+    { "id": "tools_stage", "label": "Threat Engines", "lane": "engines", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "safety_gate", "label": "Fail-Closed Invariants", "lane": "synthesis", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["user_input", "tree_sitter", "safecmd", "caliper", "ai_reasoner", "invariants", "impact_card"],
+  "nodes": [
+    { "id": "user_input", "lane": "ingest", "col": 0, "type": "external", "label": "Command Input", "sublabel": "shell / script", "width": 132 },
+    { "id": "tree_sitter", "lane": "ingest", "col": 1, "type": "backend", "label": "Tree-Sitter AST", "sublabel": "deobfuscator", "tag": "evasion proof", "width": 132 },
+    { "id": "safecmd", "lane": "engines", "col": 2, "type": "security", "label": "SafeCmd Tool", "sublabel": "shfmt AST allowlist", "tag": "blocks injection", "width": 132 },
+    { "id": "caliper", "lane": "engines", "col": 3, "type": "database", "label": "CmdCaliper Vector", "sublabel": "768d threat match", "tag": "MITRE ATT&CK", "width": 132 },
+    { "id": "explainshell", "lane": "synthesis", "col": 2, "type": "database", "label": "Explainshell DB", "sublabel": "manpage ground truth", "width": 132 },
+    { "id": "heuristics", "lane": "synthesis", "col": 3, "type": "backend", "label": "Heuristic Engine", "sublabel": "blast radius analysis", "width": 132 },
+    { "id": "ai_reasoner", "lane": "synthesis", "col": 4, "type": "cloud", "label": "Grounded LLM", "sublabel": "Groq LPU / Ollama", "tag": "zero hallucination", "width": 132 },
+    { "id": "invariants", "lane": "synthesis", "col": 5, "type": "security", "label": "Safety Invariants", "sublabel": "override rules", "tag": "fail closed", "width": 132 },
+    { "id": "threat_lock", "lane": "engines", "col": 5, "type": "security", "label": "Threat Alert", "sublabel": "lock critical risk", "width": 132 },
+    { "id": "impact_card", "lane": "ingest", "col": 5, "type": "frontend", "label": "ImpactCard UI", "sublabel": "interactive review", "width": 132 }
+  ],
+  "edges": [
+    { "id": "e-input-tree", "from": "user_input", "to": "tree_sitter", "label": "normalize", "variant": "emphasis" },
+    { "id": "e-tree-safecmd", "from": "tree_sitter", "to": "safecmd", "label": "AST nodes", "variant": "default" },
+    { "id": "e-safecmd-caliper", "from": "safecmd", "to": "caliper", "label": "clean stream", "variant": "default" },
+    { "id": "e-tree-manpage", "from": "tree_sitter", "to": "explainshell", "label": "parse flags", "variant": "dashed" },
+    { "id": "e-manpage-heuristics", "from": "explainshell", "to": "heuristics", "variant": "default" },
+    { "id": "e-caliper-ai", "from": "caliper", "to": "ai_reasoner", "label": "threat vectors", "variant": "emphasis" },
+    { "id": "e-heuristics-ai", "from": "heuristics", "to": "ai_reasoner", "label": "impact data", "variant": "default" },
+    { "id": "e-ai-invariants", "from": "ai_reasoner", "to": "invariants", "label": "verify risk", "variant": "security" },
+    { "id": "e-invariants-lock", "from": "invariants", "to": "threat_lock", "label": "harmful pattern", "variant": "security", "role": "error" },
+    { "id": "e-invariants-ui", "from": "invariants", "to": "impact_card", "label": "synthesized intent", "variant": "emphasis", "role": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Deterministic Defense",
+      "items": [
+        "Tree-Sitter normalizes evasion and unpacks static decoders",
+        "SafeCmd AST and CmdCaliper 768d vector embeddings flag exploits"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Fail-Closed Invariants",
+      "items": [
+        "Grounded AI synthesizes verified facts without hallucinating",
+        "Deterministic engine threats strictly override model risk scores"
+      ]
+    }
+  ]
+}

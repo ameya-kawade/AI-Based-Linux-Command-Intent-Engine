@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Linux Command Intent Engine - System Architecture",
+    "output": "app-architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "analysis-flow",
+        "label": "Pre-flight analysis flow",
+        "focus": ["user_browser", "api_gateway", "coordinator", "normalizer", "tools_engine", "ai_reasoner"],
+        "note": "Trace commands from web input through AST deobfuscation, multi-engine consensus, and AI synthesis."
+      },
+      {
+        "id": "execution-flow",
+        "label": "Execution and audit flow",
+        "focus": ["user_browser", "term_stream", "api_gateway", "host_exec", "sandbox", "history_db"],
+        "note": "Follow real-time streaming output across host subprocess and eBPF sandbox to SQLite audit history."
+      },
+      {
+        "id": "knowledge-flow",
+        "label": "Ground-truth knowledge flow",
+        "focus": ["tools_engine", "vector_db", "explainshell_db"],
+        "note": "Isolate vector similarity matching against MITRE ATT&CK patterns and SQLite manpage lookups."
+      }
+    ]
+  },
+  "components": [
+    { "id": "user_browser", "type": "frontend", "label": "Web Interface", "sublabel": "React 18 + Tailwind", "pos": [50, 160], "size": [140, 64] },
+    { "id": "term_stream", "type": "frontend", "label": "Terminal Stream", "sublabel": "WebSocket xterm.js", "pos": [50, 320], "size": [140, 64] },
+    { "id": "api_gateway", "type": "backend", "label": "FastAPI Gateway", "sublabel": "Port 8000 REST/WS", "pos": [320, 240], "size": [150, 68] },
+    { "id": "coordinator", "type": "security", "label": "Pipeline Coordinator", "sublabel": "Safety Invariants", "pos": [600, 130], "size": [160, 68] },
+    { "id": "host_exec", "type": "backend", "label": "Host Subprocess", "sublabel": "Async Streamer", "pos": [600, 270], "size": [160, 64] },
+    { "id": "sandbox", "type": "security", "label": "eBPF Sandbox", "sublabel": "Docker + Aqua Tracee", "pos": [600, 410], "size": [160, 64] },
+    { "id": "normalizer", "type": "backend", "label": "AST Deobfuscator", "sublabel": "Tree-Sitter Bash", "pos": [890, 50], "size": [150, 64] },
+    { "id": "tools_engine", "type": "security", "label": "Safety Analyzers", "sublabel": "SafeCmd + Heuristics", "pos": [890, 160], "size": [150, 64] },
+    { "id": "ai_reasoner", "type": "cloud", "label": "Grounded AI Reasoner", "sublabel": "Groq LPU / Ollama", "pos": [890, 270], "size": [150, 64] },
+    { "id": "history_db", "type": "database", "label": "Audit Telemetry", "sublabel": "SQLite Execution Log", "pos": [890, 410], "size": [150, 64] },
+    { "id": "explainshell_db", "type": "database", "label": "Manpage Store", "sublabel": "SQLite Cache + Man7", "pos": [1170, 110], "size": [150, 64] },
+    { "id": "vector_db", "type": "database", "label": "Vector Threat DB", "sublabel": "CmdCaliper 768-dim", "pos": [1170, 220], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "security-group", "label": "Client Interface Tier", "wraps": ["user_browser", "term_stream"] },
+    { "kind": "region", "label": "LCIE Core Runtime Service", "wraps": ["api_gateway", "coordinator", "host_exec", "sandbox", "normalizer", "tools_engine", "history_db"] },
+    { "kind": "security-group", "label": "Knowledge Layer", "wraps": ["explainshell_db", "vector_db"] }
+  ],
+  "connections": [
+    { "id": "c-input-api", "from": "user_browser", "to": "api_gateway", "label": "POST /api/analyze", "variant": "emphasis" },
+    { "id": "c-stream-api", "from": "term_stream", "to": "api_gateway", "label": "WS /ws/execute", "variant": "default" },
+    { "id": "c-api-coord", "from": "api_gateway", "to": "coordinator", "label": "dispatch analysis", "variant": "emphasis" },
+    { "id": "c-api-host", "from": "api_gateway", "to": "host_exec", "label": "host execution", "variant": "default" },
+    { "id": "c-api-sandbox", "from": "api_gateway", "to": "sandbox", "label": "sandbox execution", "variant": "security" },
+    { "id": "c-coord-norm", "from": "coordinator", "to": "normalizer", "label": "deobfuscate", "variant": "default" },
+    { "id": "c-coord-tools", "from": "coordinator", "to": "tools_engine", "label": "inspect rules", "variant": "security" },
+    { "id": "c-coord-ai", "from": "coordinator", "to": "ai_reasoner", "label": "synthesize", "variant": "emphasis" },
+    { "id": "c-host-history", "from": "host_exec", "to": "history_db", "label": "audit host run", "variant": "dashed" },
+    { "id": "c-sandbox-history", "from": "sandbox", "to": "history_db", "label": "audit sandbox run", "variant": "dashed", "labelDy": 24 },
+    { "id": "c-tools-manpage", "from": "tools_engine", "to": "explainshell_db", "label": "lookup flags", "variant": "default" },
+    { "id": "c-tools-vector", "from": "tools_engine", "to": "vector_db", "label": "cosine match", "variant": "default" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Interactive Client",
+      "items": [
+        "React 18 interface with animated radar scanner",
+        "Bi-directional WebSocket streaming terminal"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Deterministic Safety",
+      "items": [
+        "Tree-Sitter AST deobfuscator neutralizes evasion",
+        "Strict coordinator invariants override LLM scores"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Dual Execution Model",
+      "items": [
+        "Direct host subprocess with streaming I/O",
+        "Isolated Docker sandbox with Aqua Tracee eBPF"
+      ]
+    }
+  ]
+}
