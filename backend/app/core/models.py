@@ -3,6 +3,9 @@ from pydantic import BaseModel, Field
 
 
 ImpactLevel = Literal["SAFE", "CAUTION", "CRITICAL"]
+RiskLevel = Literal["SAFE", "CAUTION", "HIGH", "CRITICAL", "UNKNOWN"]
+ExecutionDecision = Literal["ALLOW", "CONFIRM", "BLOCK", "UNKNOWN"]
+AnalysisStatus = Literal["COMPLETE", "PARTIAL", "FAILED", "UNKNOWN"]
 
 
 class FilesystemImpact(BaseModel):
@@ -184,6 +187,18 @@ class IntentAnalysis(BaseModel):
         default=None, description="Aqua Tracee eBPF script intent and runtime trace verdict"
     )
     analysis_time_ms: int = Field(default=0, description="Analysis computation time in milliseconds")
+    execution_decision: ExecutionDecision = Field(
+        default="UNKNOWN",
+        description="Deterministic execution policy decision: ALLOW | CONFIRM | BLOCK | UNKNOWN"
+    )
+    analysis_status: AnalysisStatus = Field(
+        default="COMPLETE",
+        description="Pipeline completion status: COMPLETE | PARTIAL | FAILED | UNKNOWN"
+    )
+    normalized_command: str = Field(
+        default="",
+        description="Deobfuscated/normalized command (differs from original when obfuscation is detected)"
+    )
 
 
 class HistoryItem(BaseModel):

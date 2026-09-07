@@ -25,7 +25,15 @@ class ExplainshellTool(BasePipelineTool):
         return "Ground-truth manpage synopsis and flag extractor for pipelines, subcommands, and operators via Explainshell and man7.org"
 
     def is_available(self) -> bool:
-        return get_explainshell_db().is_available() or True
+        """Available if either the local Explainshell SQLite DB or the man7.org engine is reachable."""
+        if get_explainshell_db().is_available():
+            return True
+        # Fall back to man7.org engine availability check
+        try:
+            man7 = get_man7_engine()
+            return man7 is not None
+        except Exception:
+            return False
 
     def _resolve_single_command_explanation(self, cmd: str) -> Optional[CommandExplanation]:
         """Resolves manpage and flag breakdown for a single command or wrapper execution."""

@@ -21,7 +21,7 @@ export default function TerminalStream({
   outputChunks = [],
   isExecuting,
   executionResult,
-  target = 'host',
+  target = 'sandbox',
   theme = 'dark',
   onAbort,
 }) {

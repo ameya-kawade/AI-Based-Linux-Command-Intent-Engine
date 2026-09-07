@@ -1,27 +1,59 @@
 import asyncio
 from datetime import datetime
 import json
+import logging
 from typing import Any, Dict, Optional
 import uuid
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from pydantic import BaseModel, Field
+
 from app.core.models import HistoryItem, IntentAnalysis
 from app.core.executor import CommandExecutor
 from app.dependencies import get_executor, get_history_manager, get_sandbox_client
 from app.services.history_manager import HistoryManager
 from app.services.sandbox_client import SandboxClient
 
-router = APIRouter(tags=["Execution Stream"])
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/execute", tags=["Sandbox Execution"])
+
+class ExecuteRequest(BaseModel):
+    command: str
+    target: str = "sandbox"
+    cwd: Optional[str] = "/tmp"
 
 
-@router.websocket("/ws/execute")
-async def websocket_execute_endpoint(
+@router.post("")
+@router.post("/")
+async def execute_http_endpoint(req: ExecuteRequest):
+    """
+    HTTP execution endpoint. Reject host execution with 403 Forbidden.
+    """
+    if req.target == "host":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Host shell execution is permanently disabled for security. All executions must run in the isolated Docker sandbox.",
+        )
+    return {
+        "status": "rejected",
+        "detail": "Direct HTTP execution is deprecated. Use WebSocket /api/execute/stream for sandbox execution.",
+    }
+
+
+
+@router.websocket("/stream")
+async def websocket_execution_endpoint(
     websocket: WebSocket,
     executor: CommandExecutor = Depends(get_executor),
-    history_manager: HistoryManager = Depends(get_history_manager),
     sandbox_client: SandboxClient = Depends(get_sandbox_client),
+    history_manager: HistoryManager = Depends(get_history_manager),
 ):
+    """
+    WebSocket endpoint for real-time execution streaming.
+    SECURITY NOTICE: Host machine execution has been permanently disabled.
+    All untrusted shell commands and scripts execute exclusively inside the isolated Docker sandbox.
+    """
     await websocket.accept()
-
     execution_task: Optional[asyncio.Task] = None
 
     try:
@@ -37,17 +69,16 @@ async def websocket_execute_endpoint(
 
             if action == "abort":
                 if execution_task and not execution_task.done():
-                    executor.abort_active_process()
                     execution_task.cancel()
                     await websocket.send_json({
                         "type": "aborted",
-                        "message": "Process execution aborted by user.",
+                        "message": "Sandbox execution task cancelled by user.",
                     })
                 continue
 
             if action == "execute":
                 command = (msg.get("command") or "").strip()
-                target = msg.get("target", "host")  # "host" or "sandbox"
+                target = msg.get("target", "sandbox")
                 analysis_dict = msg.get("analysis")
 
                 parsed_analysis: Optional[IntentAnalysis] = None
@@ -61,132 +92,45 @@ async def websocket_execute_endpoint(
                     await websocket.send_json({"type": "error", "message": "Command cannot be empty."})
                     continue
 
-                # Run either Host subprocess or Docker Sandbox
-                if target == "sandbox":
-                    execution_task = asyncio.create_task(
-                        _run_sandbox_stream(
-                            websocket=websocket,
-                            command=command,
-                            analysis=parsed_analysis,
-                            sandbox_client=sandbox_client,
-                            history_manager=history_manager,
-                            executor=executor,
-                        )
+                # REJECT HOST EXECUTION REQUESTS
+                if target == "host":
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Host execution is permanently disabled for security. All executions must run in the isolated Docker sandbox.",
+                    })
+                    continue
+
+                # CHECK FOR POLICY BLOCKS
+                if parsed_analysis:
+                    decision = getattr(parsed_analysis, "execution_decision", None)
+                    risk_level = getattr(parsed_analysis, "risk_level", None)
+                    if decision == "BLOCK" or risk_level == "CRITICAL":
+                        # If force confirm flag not present or explicitly blocked
+                        if not msg.get("force_confirmed", False) and decision == "BLOCK":
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": "Execution BLOCKED: Command is classified as high-risk or prohibited by security policy.",
+                            })
+                            continue
+
+                execution_task = asyncio.create_task(
+                    _run_sandbox_stream(
+                        websocket=websocket,
+                        command=command,
+                        analysis=parsed_analysis,
+                        sandbox_client=sandbox_client,
+                        history_manager=history_manager,
+                        executor=executor,
                     )
-                else:
-                    execution_task = asyncio.create_task(
-                        _run_host_stream(
-                            websocket=websocket,
-                            command=command,
-                            analysis=parsed_analysis,
-                            executor=executor,
-                            history_manager=history_manager,
-                        )
-                    )
+                )
 
     except WebSocketDisconnect:
         if execution_task and not execution_task.done():
-            executor.abort_active_process()
             execution_task.cancel()
-    except Exception:
-        if execution_task and not execution_task.done():
-            executor.abort_active_process()
-            execution_task.cancel()
-
-
-async def _run_host_stream(
-    websocket: WebSocket,
-    command: str,
-    analysis: Optional[IntentAnalysis],
-    executor: CommandExecutor,
-    history_manager: HistoryManager,
-):
-    await websocket.send_json({
-        "type": "started",
-        "command": command,
-        "target": "host",
-        "cwd": str(executor.current_cwd),
-        "prompt_path": executor.get_prompt_path(),
-    })
-
-    output_chunks = []
-
-    def on_chunk(chunk: str):
-        output_chunks.append(chunk)
-        # Schedule sending to websocket
-        asyncio.create_task(_send_chunk_safe(websocket, chunk))
-
-    try:
-        full_output, exit_code, duration_ms, status = await executor.execute(
-            command,
-            on_output_chunk=on_chunk,
-        )
-
-        history_item = HistoryItem(
-            id=str(uuid.uuid4()),
-            timestamp=datetime.now().isoformat(),
-            cwd=executor.get_prompt_path(),
-            command=command,
-            analysis=analysis,
-            status=status,  # type: ignore
-            output=full_output,
-            exit_code=exit_code,
-            duration_ms=duration_ms,
-        )
-        history_manager.add_item(history_item)
-
-        await websocket.send_json({
-            "type": "finish",
-            "command": command,
-            "target": "host",
-            "output": full_output,
-            "exit_code": exit_code,
-            "duration_ms": duration_ms,
-            "status": status,
-            "cwd": str(executor.current_cwd),
-            "prompt_path": executor.get_prompt_path(),
-            "history_item": history_item.model_dump(),
-        })
-
-    except asyncio.CancelledError:
-        full_out = "".join(output_chunks) + "\n[Execution aborted]\n"
-        history_item = HistoryItem(
-            id=str(uuid.uuid4()),
-            timestamp=datetime.now().isoformat(),
-            cwd=executor.get_prompt_path(),
-            command=command,
-            analysis=analysis,
-            status="cancelled",
-            output=full_out,
-            exit_code=130,
-            duration_ms=0,
-        )
-        history_manager.add_item(history_item)
-        await _send_json_safe(websocket, {
-            "type": "finish",
-            "command": command,
-            "target": "host",
-            "output": full_out,
-            "exit_code": 130,
-            "duration_ms": 0,
-            "status": "cancelled",
-            "cwd": str(executor.current_cwd),
-            "prompt_path": executor.get_prompt_path(),
-            "history_item": history_item.model_dump(),
-        })
     except Exception as e:
-        err_msg = f"Execution error: {str(e)}\n"
-        await _send_json_safe(websocket, {
-            "type": "finish",
-            "command": command,
-            "target": "host",
-            "output": err_msg,
-            "exit_code": 1,
-            "duration_ms": 0,
-            "status": "error",
-            "cwd": str(executor.current_cwd),
-            "prompt_path": executor.get_prompt_path(),
-        })
+        logger.error(f"WebSocket connection error: {e}")
+        if execution_task and not execution_task.done():
+            execution_task.cancel()
 
 
 async def _run_sandbox_stream(
@@ -226,7 +170,7 @@ async def _run_sandbox_stream(
         cwd="[Docker Sandbox]",
         command=command,
         analysis=analysis,
-        status=status if status in ("success", "error", "cancelled") else "error",  # type: ignore
+        status=status if status in ("success", "error", "cancelled") else "error",
         output=script_output or str(res.get("error", "")),
         exit_code=exit_code,
         duration_ms=duration_ms,

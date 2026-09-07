@@ -3,8 +3,10 @@ import time
 from typing import List, Optional
 
 from app.core.models import (
+    AnalysisStatus,
     CmdCaliperVerdict,
     CommandExplanation,
+    ExecutionDecision,
     FilesystemImpact,
     ImpactLevel,
     IntentAnalysis,
@@ -74,10 +76,11 @@ class PipelineCoordinator:
     ) -> IntentAnalysis:
         start_time = time.perf_counter()
         
+        original_command = command.strip()
         try:
             from app.core.pipeline.normalizer import DeobfuscationEngine
             engine = DeobfuscationEngine()
-            clean_cmd = engine.normalize(command.strip())
+            clean_cmd = engine.normalize(original_command)
             is_unresolvable = engine.unresolvable
         except Exception:
             clean_cmd = command.strip()
@@ -102,7 +105,7 @@ class PipelineCoordinator:
             )
 
         context = PipelineContext(
-            command=clean_cmd,
+            command=original_command,
             cwd=cwd,
             requested_provider=provider,
             requested_model=model,
@@ -110,6 +113,9 @@ class PipelineCoordinator:
             script_content=script_content,
             script_name=script_name,
         )
+
+        # Store normalized command separately; do NOT overwrite context.command
+        context._normalized_command = clean_cmd
 
         if is_unresolvable:
             context.warnings.append("[Deobfuscation Threat] Payload relies on unresolvable dynamic state or obfuscation (STATE: UNRESOLVABLE_DYNAMIC_OBFUSCATION).")
@@ -241,10 +247,37 @@ class PipelineCoordinator:
             else:
                 rev_expl = "Read-only inspection command; causes no persistent state mutations."
 
+        # 10. Deterministic Fail-Closed Execution Decision
+        # CRITICAL/HIGH -> BLOCK; CAUTION -> CONFIRM; SAFE -> ALLOW; else -> BLOCK (fail-closed)
+        if risk == "CRITICAL":
+            execution_decision: ExecutionDecision = "BLOCK"
+        elif risk == "CAUTION":
+            execution_decision = "CONFIRM"
+        elif risk == "SAFE":
+            execution_decision = "ALLOW"
+        else:
+            # UNKNOWN or unrecognized — fail closed
+            execution_decision = "BLOCK"
+
+        # 11. Analysis Status
+        failed_critical = any(
+            "UNRESOLVABLE_DYNAMIC_OBFUSCATION" in w for w in warnings
+        )
+        if failed_critical:
+            analysis_status: AnalysisStatus = "PARTIAL"
+        else:
+            analysis_status = "COMPLETE"
+
+        # 12. Normalized command (if deobfuscation ran)
+        normalized_cmd = getattr(context, "_normalized_command", "")
+
         return IntentAnalysis(
             command=context.command,
+            normalized_command=normalized_cmd,
             intent=intent,
             risk_level=risk,
+            execution_decision=execution_decision,
+            analysis_status=analysis_status,
             is_reversible=is_reversible,
             reversibility_explanation=rev_expl,
             filesystem=fs,

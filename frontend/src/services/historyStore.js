@@ -216,7 +216,7 @@ export async function addHistoryEntry(userId, entry) {
     timestamp: entry.timestamp || new Date().toISOString(),
     command: entry.command || '',
     cwd: entry.cwd || '~',
-    target: entry.target || 'host', // 'host' | 'sandbox' | 'analyzed'
+    target: entry.target || 'sandbox', // 'host' | 'sandbox' | 'analyzed'
     status: entry.status || 'analyzed', // 'analyzed' | 'success' | 'error' | 'aborted'
     risk_level: entry.risk_level || entry.analysis?.risk_level || 'SAFE',
     duration_ms: entry.duration_ms,

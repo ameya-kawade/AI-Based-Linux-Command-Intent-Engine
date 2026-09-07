@@ -115,14 +115,19 @@ class DockerService {
       Image: targetImage,
       Cmd: [targetShell, '/sandbox/script.sh'],
       WorkingDir: '/sandbox',
+      User: config.sandbox.user || '10001:10001',
       HostConfig: {
         Memory: memoryBytes,
         NanoCPUs: nanoCpus,
         PidsLimit: config.sandbox.pidsLimit,
         SecurityOpt: ['no-new-privileges:true'],
         CapDrop: ['ALL'],
-        CapAdd: ['CHOWN', 'SETUID', 'SETGID'],
-        NetworkMode: 'bridge',
+        ReadonlyRootfs: config.sandbox.readonlyRootfs,
+        Tmpfs: {
+          '/tmp': 'rw,noexec,nosuid,size=64m',
+          '/run': 'rw,noexec,nosuid,size=16m',
+        },
+        NetworkMode: config.sandbox.networkMode || 'none',
         Binds: [`${hostScriptPath}:/sandbox/script.sh:ro`],
       },
     });

@@ -21,7 +21,7 @@ load_dotenv()
 class Settings:
     HOST: str = os.getenv("WEB_HOST", "0.0.0.0")
     PORT: int = int(os.getenv("WEB_PORT", "8000"))
-    CORS_ORIGINS: list[str] = ["*"]
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3001", "http://127.0.0.1:3001"]
     
     # Sandbox service endpoint
     SANDBOX_API_URL: str = os.getenv("SANDBOX_API_URL", "http://localhost:3000")
