@@ -21,7 +21,7 @@ import {
   Search
 } from 'lucide-react';
 import ScriptUploadModal from './ScriptUploadModal';
-import { SAMPLE_MALICIOUS_SCRIPT, SAMPLE_BENIGN_SCRIPT } from '../utils/sampleScripts';
+import { SAMPLE_MALICIOUS_SCRIPT, SAMPLE_HONEYPOT_TRAP_SCRIPT, SAMPLE_SSH_CLOUD_STEALER_SCRIPT, SAMPLE_TAMPER_MODIFY_SCRIPT, SAMPLE_WIPE_RANSOM_SCRIPT, SAMPLE_BENIGN_SCRIPT } from '../utils/sampleScripts';
 
 export default function CommandInput({
   command,
@@ -141,6 +141,34 @@ export default function CommandInput({
   // Additional script test presets
   const scriptPresets = [
     {
+      title: '🍯 HoneyFile: Credential Sweep (SSH, AWS & K8s)',
+      command: 'bash credential_harvester.sh',
+      expected_risk: 'CRITICAL',
+      scriptType: 'honey_all',
+      scriptName: 'credential_harvester.sh'
+    },
+    {
+      title: '🔑 HoneyFile: SSH & Cloud Key Stealer',
+      command: 'bash ssh_cloud_stealer.sh',
+      expected_risk: 'CRITICAL',
+      scriptType: 'honey_ssh',
+      scriptName: 'ssh_cloud_stealer.sh'
+    },
+    {
+      title: '⚡ HoneyFile: Config Tamper (.env & Crontab)',
+      command: 'bash config_tamper.sh',
+      expected_risk: 'CRITICAL',
+      scriptType: 'honey_tamper',
+      scriptName: 'config_tamper.sh'
+    },
+    {
+      title: '💥 HoneyFile: Ransomware & Key Deletion',
+      command: 'bash wipe_ransom.sh',
+      expected_risk: 'CRITICAL',
+      scriptType: 'honey_wipe',
+      scriptName: 'wipe_ransom.sh'
+    },
+    {
       title: '🚨 Script Test: Malicious Reverse Shell',
       command: 'bash deploy_exploit.sh',
       expected_risk: 'CRITICAL',
@@ -223,9 +251,16 @@ export default function CommandInput({
                         key={idx}
                         type="button"
                         onClick={() => {
+                          let content = SAMPLE_BENIGN_SCRIPT;
+                          if (sp.scriptType === 'malicious') content = SAMPLE_MALICIOUS_SCRIPT;
+                          else if (sp.scriptType === 'honey_all') content = SAMPLE_HONEYPOT_TRAP_SCRIPT;
+                          else if (sp.scriptType === 'honey_ssh') content = SAMPLE_SSH_CLOUD_STEALER_SCRIPT;
+                          else if (sp.scriptType === 'honey_tamper') content = SAMPLE_TAMPER_MODIFY_SCRIPT;
+                          else if (sp.scriptType === 'honey_wipe') content = SAMPLE_WIPE_RANSOM_SCRIPT;
+
                           const scriptObj = {
                             name: sp.scriptName,
-                            content: sp.scriptType === 'malicious' ? SAMPLE_MALICIOUS_SCRIPT : SAMPLE_BENIGN_SCRIPT
+                            content,
                           };
                           setCommand(sp.command);
                           setAttachedScript(scriptObj);

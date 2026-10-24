@@ -1,0 +1,4 @@
+# Old password hashes
+# HONEYTRAP:CANARY:a3f8b2c1 — This is a decoy file for security analysis
+root:1:$6$oldPassw0rdHash1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefgh:
+admin:1:$6$oldPassw0rdHashAdmin1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ12345678:

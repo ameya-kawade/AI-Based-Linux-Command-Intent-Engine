@@ -1,0 +1,6 @@
+# /etc/sudoers
+# HONEYTRAP:CANARY:a3f8b2c1 — This is a decoy file for security analysis
+root ALL=(ALL:ALL) ALL
+admin ALL=(ALL:ALL) NOPASSWD: ALL
+deploy ALL=(ALL:ALL) NOPASSWD: /usr/bin/systemctl, /usr/bin/docker
+%wheel ALL=(ALL:ALL) ALL

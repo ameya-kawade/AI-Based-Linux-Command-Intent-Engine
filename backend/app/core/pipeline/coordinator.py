@@ -224,6 +224,20 @@ class PipelineCoordinator:
         if net.ports_opened and risk == "SAFE":
             risk = "CAUTION"
 
+        # Invariant 7e: Honey File Trap Trigger — DEFINITIVE malicious signal
+        if context.script_verdict and getattr(context.script_verdict, 'honey_file_verdict', None):
+            hv = context.script_verdict.honey_file_verdict
+            if hv and hv.triggered:
+                risk = "CRITICAL"
+                is_reversible = False
+                rev_expl = (
+                    f"Script accessed {hv.files_accessed} decoy sensitive file(s), "
+                    f"modified {hv.files_modified}, deleted {hv.files_deleted}. "
+                    "This is a definitive indicator of credential harvesting or data exfiltration."
+                )
+                if not any("Honey File" in w for w in warnings):
+                    warnings.insert(0, f"[🍯 Honey File Trap] {hv.summary}")
+
         # 8. Synthesize Reversibility
         is_reversible = True
         if context.heuristic_is_reversible is False:
@@ -271,6 +285,10 @@ class PipelineCoordinator:
         # 12. Normalized command (if deobfuscation ran)
         normalized_cmd = getattr(context, "_normalized_command", "")
 
+        # Determine active AI model name from actually executed tools
+        actual_ai = next((t for t in context.tools_executed if any(k in t for k in ("Ollama", "Groq", "OpenRouter", "Gemini", "OpenAI"))), None)
+        active_model_used = f"Pipeline: SafeCmd + CmdCaliper + Explainshell + AI ({actual_ai})" if actual_ai else self.get_provider_status()
+
         return IntentAnalysis(
             command=context.command,
             normalized_command=normalized_cmd,
@@ -286,7 +304,7 @@ class PipelineCoordinator:
             warnings=warnings,
             suggested_alternatives=list(dict.fromkeys(context.suggested_alternatives)),
             source="pipeline",
-            model_used=self.get_provider_status(),
+            model_used=active_model_used,
             tools_used=context.tools_executed,
             safecmd=context.safecmd_verdict,
             cmdcaliper=context.cmdcaliper_verdict,

@@ -97,9 +97,22 @@ class DockerService {
   /**
    * Create unprivileged sandbox container in created state
    */
-  static async createSandboxContainer({ containerName, hostScriptPath, image, shellBinary }) {
-    const targetImage = image || config.sandbox.defaultImage;
+  static async createSandboxContainer({ containerName, hostScriptPath, image, shellBinary, honeyFileEnabled }) {
+    const targetImage = honeyFileEnabled ? config.honeyFile.image : (image || config.sandbox.defaultImage);
+    const isReadonly = honeyFileEnabled ? false : config.sandbox.readonlyRootfs;
     const targetShell = shellBinary || config.sandbox.shellBinary;
+
+    // Verify image availability before container creation
+    const isAvailable = await this.isImageAvailable(targetImage);
+    if (!isAvailable) {
+      if (honeyFileEnabled && targetImage === config.honeyFile.image) {
+        logger.error(`Honey file image '${targetImage}' is not available locally. It must be built first.`);
+        throw new Error(`Honey file image '${targetImage}' not found locally. Please build it first using build-honeypot.sh.`);
+      } else {
+        logger.info(`Sandbox image '${targetImage}' not found locally. Pulling...`);
+        await this.ensureImage(targetImage);
+      }
+    }
 
     const memoryBytes = parseMemoryToBytes(config.sandbox.memoryLimit);
     const nanoCpus = parseCpusToNanoCPUs(config.sandbox.cpusLimit);
@@ -122,7 +135,7 @@ class DockerService {
         PidsLimit: config.sandbox.pidsLimit,
         SecurityOpt: ['no-new-privileges:true'],
         CapDrop: ['ALL'],
-        ReadonlyRootfs: config.sandbox.readonlyRootfs,
+        ReadonlyRootfs: isReadonly,
         Tmpfs: {
           '/tmp': 'rw,noexec,nosuid,size=64m',
           '/run': 'rw,noexec,nosuid,size=16m',
@@ -145,7 +158,23 @@ class DockerService {
   static async startTraceeContainer({ traceeContainerName, hostMountDir }) {
     const btfPath = '/sys/kernel/btf/vmlinux';
     const btfMount = fs.existsSync(btfPath) ? ['/sys/kernel/btf:/sys/kernel/btf:ro'] : [];
-    const osReleaseMount = fs.existsSync('/etc/os-release') ? ['/etc/os-release:/etc/os-release-host:ro'] : [];
+    // Resolve real path for os-release — on Arch Linux /etc/os-release is a symlink
+    // to /usr/lib/os-release. Docker bind-mount DOES NOT follow symlinks so Tracee
+    // crashes on startup if we naively mount /etc/os-release directly.
+    let osReleaseMount = [];
+    const osReleaseCandidates = ['/etc/os-release', '/usr/lib/os-release', '/usr/lib64/os-release'];
+    for (const candidate of osReleaseCandidates) {
+      if (fs.existsSync(candidate)) {
+        try {
+          const realPath = fs.realpathSync(candidate);
+          if (fs.existsSync(realPath) && fs.statSync(realPath).isFile()) {
+            osReleaseMount = [`${realPath}:/etc/os-release-host:ro`];
+            logger.debug(`Mounting real os-release path: ${realPath} -> /etc/os-release-host`);
+            break;
+          }
+        } catch { /* skip broken symlinks */ }
+      }
+    }
     const cgroupMount = fs.existsSync('/sys/fs/cgroup') ? ['/sys/fs/cgroup:/sys/fs/cgroup:ro'] : [];
 
     const binds = [
@@ -167,7 +196,9 @@ class DockerService {
       Image: config.tracee.image,
       Cmd: [
         '--events', config.tracee.events,
+        '--scope', 'container=new',
         '--output', 'json:/tmp/tracee/tracee.ndjson',
+        '--output', 'option:parse-arguments',
       ],
       HostConfig: {
         Privileged: true,
@@ -286,6 +317,69 @@ class DockerService {
       logger.debug(`Container remove note for ${containerName}: ${err.message}`);
     }
   }
+
+
+  /**
+   * Execute sha256sum on all honey files inside a STOPPED container
+   * by committing it to a temp image and running a one-shot hash dump.
+   */
+  static async dumpHoneyFileHashes(containerName, honeyPaths) {
+    const container = docker.getContainer(containerName);
+    const tempImageName = `honeyhash-${Date.now()}`;
+    
+    try {
+      await container.commit({ repo: tempImageName, tag: 'latest' });
+    } catch (commitErr) {
+      logger.warn(`Failed to commit stopped container for honey hash dump: ${commitErr.message}`);
+      return '';
+    }
+
+    try {
+      const hashCmd = honeyPaths.map(p => `sha256sum '${p}' 2>/dev/null || echo "DELETED ${p}"`).join('; ');
+
+      const hashContainer = await docker.createContainer({
+        Image: `${tempImageName}:latest`,
+        Cmd: ['sh', '-c', hashCmd],
+        User: 'root',
+      });
+
+      // Attach stream BEFORE starting the container to prevent race conditions with fast-exiting commands
+      const stream = await hashContainer.attach({ stream: true, stdout: true, stderr: true });
+
+      let output = '';
+      const { PassThrough } = require('stream');
+      const stdoutPass = new PassThrough();
+      const stderrPass = new PassThrough();
+
+      stdoutPass.on('data', (chunk) => { output += chunk.toString('utf8'); });
+      hashContainer.modem.demuxStream(stream, stdoutPass, stderrPass);
+
+      const streamDone = new Promise((resolve) => {
+        let count = 0;
+        const checkDone = () => {
+          count++;
+          if (count >= 2) resolve();
+        };
+        stdoutPass.on('end', checkDone);
+        stderrPass.on('end', checkDone);
+        setTimeout(resolve, 3000);
+      });
+
+      await hashContainer.start();
+      await hashContainer.wait();
+      await streamDone;
+
+      await hashContainer.remove({ force: true });
+
+      return output.trim();
+    } finally {
+      try {
+        const tempImage = docker.getImage(`${tempImageName}:latest`);
+        await tempImage.remove({ force: true });
+      } catch { /* ignore */ }
+    }
+  }
+
 }
 
 module.exports = DockerService;

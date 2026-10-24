@@ -5,7 +5,7 @@ import AnalyzingRadar from './components/AnalyzingRadar';
 import ImpactCard from './components/ImpactCard';
 import HistoryFeed from './components/HistoryFeed';
 import SettingsModal from './components/SettingsModal';
-import { fetchSystemStatus, analyzeCommand, fetchPresets } from './services/api';
+import { fetchSystemStatus, analyzeCommand, fetchPresets, updateSettings } from './services/api';
 import { addHistoryEntry, getActiveUserId } from './services/historyStore';
 
 const DEFAULT_PRESETS = [
@@ -17,6 +17,9 @@ const DEFAULT_PRESETS = [
   { title: "Top CPU Consuming Processes", command: "ps aux --sort=-%cpu | head -n 6", expected_risk: "SAFE" },
   { title: "Inspect Kernel IPTables Rules", command: "sudo iptables -L -n -v", expected_risk: "CAUTION" },
   { title: "Docker Container Status & Health", command: "docker ps -a", expected_risk: "SAFE" },
+  { title: "🍯 HoneyFile: SSH & Cloud Credential Harvest", command: "bash -c 'cat /root/.ssh/id_rsa /root/.aws/credentials /etc/shadow'", expected_risk: "CRITICAL" },
+  { title: "🍯 HoneyFile: Config Tampering (.env & Cron Backdoor)", command: "bash -c 'echo MALICIOUS_C2=evil.corp >> /root/.env && cat /etc/crontabs/root'", expected_risk: "CRITICAL" },
+  { title: "🍯 HoneyFile: Host Key & Vault Token Deletion", command: "bash -c 'cat /etc/shadow && rm -f /etc/ssh/ssh_host_rsa_key /root/.vault-token'", expected_risk: "CRITICAL" },
 ];
 
 export default function App() {
@@ -28,7 +31,7 @@ export default function App() {
   const [status, setStatus] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [activeProvider, setActiveProvider] = useState('groq');
+  const [activeProvider, setActiveProvider] = useState(() => localStorage.getItem('lcie_ai_provider') || 'groq');
   
   // Theme state
   const [theme, setTheme] = useState(() => {
@@ -71,11 +74,27 @@ export default function App() {
   }, []);
 
   // Handle AI provider change
-  const handleToggleProvider = () => {
+  const handleToggleProvider = async () => {
     const next = activeProvider === 'groq' ? 'ollama' : 'groq';
     setActiveProvider(next);
     localStorage.setItem('lcie_ai_provider', next);
+    try {
+      await updateSettings({ ai_provider: next });
+    } catch (e) {
+      console.warn('Failed to sync provider toggle with backend', e);
+    }
   };
+
+  // Listen for provider changes from SettingsModal
+  useEffect(() => {
+    const handleProviderChange = (e) => {
+      if (e.detail?.provider) {
+        setActiveProvider(e.detail.provider);
+      }
+    };
+    window.addEventListener('lcie-provider-changed', handleProviderChange);
+    return () => window.removeEventListener('lcie-provider-changed', handleProviderChange);
+  }, []);
 
   const [presets, setPresets] = useState(DEFAULT_PRESETS);
 
@@ -102,7 +121,9 @@ export default function App() {
       const options = {
         provider: activeProvider,
         apiKey: activeProvider === 'groq' ? (localStorage.getItem('lcie_groq_key') || undefined) : undefined,
-        model: activeProvider === 'groq' ? (localStorage.getItem('lcie_groq_model') || 'groq/compound-mini') : undefined,
+        model: activeProvider === 'groq'
+          ? (localStorage.getItem('lcie_groq_model') || 'groq/compound-mini')
+          : (localStorage.getItem('lcie_ollama_model') || 'qwen2.5-coder:1.5b'),
         scriptContent: scriptToUse?.content || undefined,
         scriptName: scriptToUse?.name || undefined,
       };

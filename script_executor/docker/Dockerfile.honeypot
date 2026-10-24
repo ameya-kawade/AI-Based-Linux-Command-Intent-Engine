@@ -1,0 +1,110 @@
+FROM alpine:latest
+
+# Install bash (for scripts requiring it) and coreutils (for sha256sum)
+RUN apk add --no-cache bash coreutils
+
+# ─── System-level honey files ───────────────────────────────────────
+# These REPLACE existing Alpine defaults with realistic fake data
+COPY honey-files/etc/shadow         /etc/shadow
+COPY honey-files/etc/gshadow        /etc/gshadow
+COPY honey-files/etc/sudoers        /etc/sudoers
+COPY honey-files/etc/crontabs/root  /etc/crontabs/root
+
+# These CREATE new files at standard Linux paths
+COPY honey-files/etc/ssh/                /etc/ssh/
+COPY honey-files/etc/ssl/private/        /etc/ssl/private/
+COPY honey-files/etc/security/           /etc/security/
+COPY honey-files/etc/wireguard/          /etc/wireguard/
+
+# ─── Root home directory honey files ────────────────────────────────
+COPY honey-files/root/  /root/
+
+# ─── Set realistic file permissions ─────────────────────────────────
+# System credential files
+RUN chmod 640 /etc/shadow && \
+    chown root:shadow /etc/shadow 2>/dev/null || chown root:root /etc/shadow && \
+    chmod 640 /etc/gshadow && \
+    chmod 440 /etc/sudoers && \
+    chmod 600 /etc/crontabs/root && \
+    # SSH host keys (server-side)
+    chmod 600 /etc/ssh/ssh_host_rsa_key && \
+    chmod 600 /etc/ssh/ssh_host_ed25519_key && \
+    chmod 644 /etc/ssh/sshd_config && \
+    # TLS and VPN keys
+    chmod 600 /etc/ssl/private/server.key && \
+    chmod 600 /etc/wireguard/wg0.conf && \
+    # PAM files
+    chmod 600 /etc/security/opasswd && \
+    chmod 644 /etc/security/access.conf && \
+    # SSH user keys
+    chmod 600 /root/.ssh/id_rsa && \
+    chmod 600 /root/.ssh/id_ed25519 && \
+    chmod 600 /root/.ssh/id_ecdsa && \
+    chmod 644 /root/.ssh/authorized_keys && \
+    chmod 644 /root/.ssh/known_hosts && \
+    chmod 644 /root/.ssh/config && \
+    # Cloud provider credentials
+    chmod 600 /root/.aws/credentials && \
+    chmod 644 /root/.aws/config && \
+    chmod 600 /root/.config/gcloud/application_default_credentials.json && \
+    chmod 600 /root/.azure/accessTokens.json && \
+    # Container/orchestration credentials
+    chmod 600 /root/.kube/config && \
+    chmod 600 /root/.docker/config.json && \
+    # DevOps tool credentials
+    chmod 600 /root/.terraform.d/credentials.tfrc.json && \
+    chmod 600 /root/.vault-token && \
+    chmod 600 /root/.config/gh/hosts.yml && \
+    # GPG keys
+    chmod 600 /root/.gnupg/private-keys-v1.d/DEADBEEF.key && \
+    # Application secrets
+    chmod 600 /root/.env && \
+    chmod 600 /root/.git-credentials && \
+    chmod 644 /root/.gitconfig && \
+    chmod 600 /root/.pgpass && \
+    chmod 600 /root/.netrc && \
+    chmod 600 /root/.npmrc && \
+    chmod 600 /root/.pypirc && \
+    # Shell histories
+    chmod 600 /root/.ash_history && \
+    chmod 600 /root/.bash_history && \
+    chmod 600 /root/.mysql_history
+
+# ─── Create sandbox user ────────────────────────────────────────────
+RUN addgroup -g 10001 sandbox && \
+    adduser -D -u 10001 -G sandbox sandboxuser
+
+# ─── Make honey files readable by sandbox user ──────────────────────
+# INTENTIONAL: We WANT the malicious script to be able to read them
+# so that Tracee can capture the access event.
+RUN chmod o+r \
+    /etc/shadow /etc/gshadow /etc/sudoers \
+    /etc/ssh/ssh_host_rsa_key /etc/ssh/ssh_host_ed25519_key \
+    /etc/ssl/private/server.key \
+    /etc/wireguard/wg0.conf \
+    /etc/security/opasswd \
+    /etc/crontabs/root \
+    /root/.ssh/id_rsa /root/.ssh/id_ed25519 /root/.ssh/id_ecdsa \
+    /root/.ssh/config /root/.ssh/authorized_keys /root/.ssh/known_hosts \
+    /root/.aws/credentials /root/.aws/config \
+    /root/.config/gcloud/application_default_credentials.json \
+    /root/.azure/accessTokens.json \
+    /root/.kube/config /root/.docker/config.json \
+    /root/.terraform.d/credentials.tfrc.json \
+    /root/.vault-token \
+    /root/.config/gh/hosts.yml \
+    /root/.gnupg/private-keys-v1.d/DEADBEEF.key \
+    /root/.env /root/.git-credentials /root/.gitconfig \
+    /root/.pgpass /root/.netrc /root/.npmrc /root/.pypirc \
+    /root/.ash_history /root/.bash_history /root/.mysql_history
+
+# Also make /root directory traversable by sandbox user
+RUN chmod o+rx /root /root/.ssh /root/.aws /root/.config \
+    /root/.config/gcloud /root/.config/gh /root/.azure \
+    /root/.docker /root/.gnupg /root/.gnupg/private-keys-v1.d \
+    /root/.kube /root/.terraform.d
+
+WORKDIR /sandbox
+
+# ─── Allow sandbox user to modify select honey files for tamper/ransom detection ───
+RUN chmod o+w /root/.env /root/.ssh/authorized_keys /etc/crontabs/root 2>/dev/null || true

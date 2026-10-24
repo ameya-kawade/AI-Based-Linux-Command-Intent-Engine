@@ -44,27 +44,31 @@ class SandboxService {
       fs.writeFileSync(scriptPath, script, { encoding: 'utf8', mode: 0o755 });
       logger.info(`[${execId}] Prepared sandbox workspace at ${runDir}`);
 
-      // 4. Create unprivileged target sandbox container via Dockerode
+      const honeyFileEnabled = options.honeyFileEnabled !== undefined
+        ? options.honeyFileEnabled
+        : (config.honeyFile && config.honeyFile.enabled);
+
+      // 4. Start Tracee eBPF container with container=new scope BEFORE creating target container
+      await DockerService.startTraceeContainer({
+        traceeContainerName,
+        targetContainerName,
+        hostMountDir: runDir,
+      });
+
+      // 5. Allow brief initialization time for Tracee eBPF kernel probes to attach
+      const initWaitMs = options.traceeInitWaitMs || config.tracee.initWaitMs;
+      logger.debug(`[${execId}] Waiting ${initWaitMs}ms for Tracee eBPF probe initialization...`);
+      await new Promise((resolve) => setTimeout(resolve, initWaitMs));
+
+      // 6. Create unprivileged target sandbox container via Dockerode (seen as 'new' container by Tracee)
       const { containerId } = await DockerService.createSandboxContainer({
         containerName: targetContainerName,
         hostScriptPath: scriptPath,
         image: options.image || config.sandbox.defaultImage,
         shellBinary: options.shellBinary || config.sandbox.shellBinary,
+        honeyFileEnabled,
       });
       logger.info(`[${execId}] Target container created via Dockerode: ${targetContainerName} (${containerId})`);
-
-      // 5. Start Tracee eBPF container via Dockerode
-      await DockerService.startTraceeContainer({
-        traceeContainerName,
-        targetContainerName,
-        targetContainerId: containerId,
-        hostMountDir: runDir,
-      });
-
-      // 6. Allow brief initialization time for Tracee eBPF kernel probes to attach
-      const initWaitMs = options.traceeInitWaitMs || config.tracee.initWaitMs;
-      logger.debug(`[${execId}] Waiting ${initWaitMs}ms for Tracee eBPF probe initialization...`);
-      await new Promise((resolve) => setTimeout(resolve, initWaitMs));
 
       // 7. Run target container with strict 10s timeout via Dockerode
       const executionTimeoutMs = options.timeoutMs || config.sandbox.timeoutMs;
@@ -85,6 +89,51 @@ class SandboxService {
       // 10. Parse Tracee eBPF security alerts & behavioral events
       const parsedAlerts = await TraceeParser.parseLogFile(traceeLogPath);
       const summary = TraceeParser.generateSummary(parsedAlerts);
+
+      // 10.5 Honey File Analysis (if enabled)
+      let honeyFileVerdict = null;
+      if (honeyFileEnabled) {
+        const HoneyFileService = require('./honeyFileService');
+        const honeyService = new HoneyFileService();
+
+        try {
+          let hashResult = { modified: [], deleted: [], intact: [] };
+          try {
+            const rawHashes = await DockerService.dumpHoneyFileHashes(
+              targetContainerName,
+              HoneyFileService.getPaths()
+            );
+            hashResult = honeyService.compareHashes(rawHashes);
+          } catch (hashErr) {
+            logger.warn(`[${execId}] Honey file hash dump failed: ${hashErr.message}`);
+            hashResult = { modified: [], deleted: [], intact: [], error: hashErr.message };
+          }
+
+          const traceeResult = honeyService.scanTraceeForHoneyAccess(parsedAlerts);
+          honeyFileVerdict = honeyService.generateVerdict(hashResult, traceeResult);
+
+          if (hashResult.error && !honeyFileVerdict.triggered) {
+            honeyFileVerdict.hash_check_error = hashResult.error;
+          }
+
+          if (honeyFileVerdict.triggered) {
+            logger.warn(`[${execId}] HONEY FILE TRIGGERED: ${honeyFileVerdict.summary}`);
+          }
+        } catch (honeyErr) {
+          logger.error(`[${execId}] Honey file analysis failed: ${honeyErr.message}`, { stack: honeyErr.stack });
+          honeyFileVerdict = {
+            triggered: false,
+            error: true,
+            total_honey_files: HoneyFileService.getPaths().length,
+            files_accessed: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            highest_severity: 'SAFE',
+            summary: `Honey file analysis encountered an error: ${honeyErr.message}`,
+            details: [],
+          };
+        }
+      }
 
       // Combine stdout and stderr for the script_output
       let combinedOutput = stdout;
@@ -108,6 +157,7 @@ class SandboxService {
         ...(errorMessage && { error: errorMessage }),
         script_output: combinedOutput || (timedOut ? '[Process killed due to execution timeout]' : ''),
         tracee_alerts: parsedAlerts,
+        honey_file_verdict: honeyFileVerdict,
         metadata: {
           execution_id: execId,
           exit_code: exitCode,

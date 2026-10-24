@@ -18,6 +18,7 @@ import {
   Layers,
   Cpu
 } from 'lucide-react';
+import { updateSettings } from '../services/api';
 import { 
   getUserProfiles, 
   saveUserProfile, 
@@ -39,6 +40,7 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
   const [groqKey, setGroqKey] = useState('');
   const [groqModel, setGroqModel] = useState('groq/compound-mini');
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+  const [ollamaModel, setOllamaModel] = useState('qwen2.5-coder:1.5b');
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -61,11 +63,13 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
       const savedKey = localStorage.getItem('lcie_groq_key') || '';
       const savedModel = localStorage.getItem('lcie_groq_model') || 'groq/compound-mini';
       const savedUrl = localStorage.getItem('lcie_ollama_url') || 'http://localhost:11434';
+      const savedOllamaModel = localStorage.getItem('lcie_ollama_model') || 'qwen2.5-coder:1.5b';
 
       setProvider(savedProvider);
       setGroqKey(savedKey);
       setGroqModel(savedModel);
       setOllamaUrl(savedUrl);
+      setOllamaModel(savedOllamaModel);
       setSavedSuccess(false);
 
       // Load Storage & Profiles
@@ -85,7 +89,7 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
     }
   };
 
-  const handleSaveAI = (e) => {
+  const handleSaveAI = async (e) => {
     e?.preventDefault();
     setIsSaving(true);
 
@@ -97,6 +101,19 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
     }
     localStorage.setItem('lcie_groq_model', groqModel);
     localStorage.setItem('lcie_ollama_url', ollamaUrl.trim() || 'http://localhost:11434');
+    localStorage.setItem('lcie_ollama_model', ollamaModel.trim() || 'qwen2.5-coder:1.5b');
+
+    try {
+      await updateSettings({
+        ai_provider: provider,
+        groq_api_key: groqKey.trim() || undefined,
+        groq_model: groqModel,
+        ollama_base_url: ollamaUrl.trim() || 'http://localhost:11434',
+        ai_model: provider === 'groq' ? groqModel : (ollamaModel.trim() || 'qwen2.5-coder:1.5b'),
+      });
+    } catch (err) {
+      console.warn('Backend settings update failed', err);
+    }
 
     window.dispatchEvent(new CustomEvent('lcie-provider-changed', { detail: { provider } }));
 
@@ -343,6 +360,22 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
                       placeholder="http://localhost:11434"
                       className="w-full bg-white dark:bg-obsidian-950 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-brand-500"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1 font-mono text-[11px]">
+                      Ollama Model Name
+                    </label>
+                    <input
+                      type="text"
+                      value={ollamaModel}
+                      onChange={(e) => setOllamaModel(e.target.value)}
+                      placeholder="qwen2.5-coder:1.5b"
+                      className="w-full bg-white dark:bg-obsidian-950 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-brand-500"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      Recommended: <span className="font-mono text-brand-600 dark:text-purple-400">qwen2.5-coder:1.5b</span>, <span className="font-mono text-brand-600 dark:text-purple-400">qwen2.5-coder:0.5b</span>, or <span className="font-mono text-brand-600 dark:text-purple-400">qwen2.5-coder:3b</span>
+                    </p>
                   </div>
                 </div>
               )}

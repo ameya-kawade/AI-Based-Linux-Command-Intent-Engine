@@ -46,7 +46,7 @@ Return a valid JSON object matching this schema EXACTLY:
   "summary": "Brief 1-sentence plain-English summary of what running this specific command line does",
   "risk_level": "SAFE" | "CAUTION" | "CRITICAL",
   "suggested_alternatives": ["safer_command_1 (Explanation)", "safer_command_2 (Explanation)"],
-  "detailed_explanation": "Detailed explanation covering what the command will do to the system, kernel, network, or files"
+  "detailed_explanation": "Comprehensive multi-sentence explanation covering what the command will do to the system, kernel, network, filesystem, or security posture"
 }
 
 Example for `nc -lvnp 4444`:
@@ -67,14 +67,14 @@ class LLMAnalyzerTool(BasePipelineTool):
     """
     AI / SLM Semantic Intent & Reasoning Tool.
     Prioritizes low-cost, fast Groq models (groq/compound-mini), local Ollama SLMs
-    (llama3.2:1b, phi4-mini:3.8b), and cloud LLM APIs, grounded with Explainshell
+    (qwen2.5-coder:1.5b, phi4-mini:3.8b), and cloud LLM APIs, grounded with Explainshell
     SQLite manpages, SafeCmd verdicts, CmdCaliper vector intelligence, and Aqua Tracee traces.
     """
 
     def __init__(self):
         self.provider, self.model_name, self.client = self._init_client()
         self._prompt_cache: Dict[str, Dict[str, Any]] = {}
-        self.timeout = float(os.getenv("LLM_TIMEOUT", "45.0"))
+        self.timeout = float(os.getenv("LLM_TIMEOUT", "60.0"))
 
     def reconfigure(self, provider_pref: Optional[str] = None, model_pref: Optional[str] = None):
         """Allows hot-reloading active provider and model at runtime."""
@@ -146,7 +146,7 @@ class LLMAnalyzerTool(BasePipelineTool):
                 try:
                     from openai import AsyncOpenAI
 
-                    resolved_model = env_model if env_model and provider_pref == "ollama" else ""
+                    resolved_model = os.getenv("OLLAMA_MODEL") or (env_model if env_model and provider_pref == "ollama" else "")
                     if not resolved_model:
                         resolved_model = self._detect_best_ollama_model(ollama_v1)
 
@@ -176,7 +176,7 @@ class LLMAnalyzerTool(BasePipelineTool):
         if self._is_ollama_available(ollama_v1):
             try:
                 from openai import AsyncOpenAI
-                resolved_model = self._detect_best_ollama_model(ollama_v1)
+                resolved_model = os.getenv("OLLAMA_MODEL") or self._detect_best_ollama_model(ollama_v1)
                 client = AsyncOpenAI(base_url=ollama_v1, api_key="ollama")
                 return ("Ollama", resolved_model, client)
             except Exception as e:
@@ -232,6 +232,19 @@ class LLMAnalyzerTool(BasePipelineTool):
         except Exception:
             return False
 
+    def _get_available_ollama_models(self, base_url: str) -> List[str]:
+        """Fetch list of models actually downloaded in the local Ollama instance."""
+        try:
+            root_url = base_url.replace("/v1", "").rstrip("/") + "/api/tags"
+            req = urllib.request.Request(root_url, method="GET")
+            with urllib.request.urlopen(req, timeout=1.5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode("utf-8"))
+                    return [m.get("name", "") for m in data.get("models", [])]
+        except Exception as e:
+            logger.debug(f"Failed to query Ollama models: {e}")
+        return []
+
     def _detect_best_ollama_model(self, base_url: str) -> str:
         """Detect and prioritize available fast 1B / 3B local models."""
         try:
@@ -242,12 +255,19 @@ class LLMAnalyzerTool(BasePipelineTool):
                     data = json.loads(response.read().decode("utf-8"))
                     available_names = [m.get("name", "") for m in data.get("models", [])]
                     for candidate in [
+                        "qwen2.5-coder:3b-instruct-q4_K_M",
+                        "qwen2.5-coder:1.5b",
+                        "qwen2.5-coder:1.5b-instruct",
+                        "qwen2.5-coder:0.5b",
+                        "qwen2.5-coder:3b",
+                        "qwen2.5-coder:latest",
+                        "qwen2.5-coder",
+                        "qwen2.5:1.5b",
                         "llama3.2:1b",
                         "llama3.2",
                         "gemma3:1b",
                         "phi4-mini:3.8b",
                         "phi4-mini",
-                        "qwen2.5-coder:3b-instruct-q4_K_M",
                     ]:
                         for avail in available_names:
                             if candidate == avail or avail.startswith(candidate):
@@ -256,7 +276,7 @@ class LLMAnalyzerTool(BasePipelineTool):
                         return available_names[0]
         except Exception:
             pass
-        return "llama3.2:1b"
+        return os.getenv("OLLAMA_MODEL", "qwen2.5-coder:1.5b")
 
     def _resolve_runtime_client(self, context: PipelineContext) -> Tuple[str, str, Optional[object]]:
         """Resolves the client to use, prioritizing per-request overrides if provided."""
@@ -273,9 +293,22 @@ class LLMAnalyzerTool(BasePipelineTool):
             elif req_provider == "ollama":
                 ollama_host = os.getenv("OLLAMA_HOST", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
                 ollama_v1 = ollama_host if ollama_host.endswith("/v1") else ollama_host.rstrip("/") + "/v1"
-                model = context.requested_model or self._detect_best_ollama_model(ollama_v1)
+                available = self._get_available_ollama_models(ollama_v1)
+                requested = context.requested_model or os.getenv("OLLAMA_MODEL")
+                resolved = None
+                if requested and available:
+                    if requested in available:
+                        resolved = requested
+                    else:
+                        req_base = requested.split(":")[0]
+                        for avail in available:
+                            if avail.startswith(requested) or requested.startswith(avail) or (req_base in avail and "qwen" in avail):
+                                resolved = avail
+                                break
+                if not resolved:
+                    resolved = self._detect_best_ollama_model(ollama_v1)
                 from openai import AsyncOpenAI
-                return ("Ollama", model, AsyncOpenAI(base_url=ollama_v1, api_key="ollama"))
+                return ("Ollama", resolved, AsyncOpenAI(base_url=ollama_v1, api_key="ollama"))
 
         return (self.provider, self.model_name, self.client)
 
@@ -347,6 +380,17 @@ class LLMAnalyzerTool(BasePipelineTool):
             if sv.script_output and sv.script_output.strip() and not sv.script_output.startswith("["):
                 preview = sv.script_output.strip()[:300]
                 lines.append(f"Script Sandbox Output Preview: {preview}")
+            if getattr(sv, 'honey_file_verdict', None) and sv.honey_file_verdict and sv.honey_file_verdict.triggered:
+                hv = sv.honey_file_verdict
+                lines.append("")
+                lines.append("🍯 HONEY FILE TRAP RESULTS:")
+                lines.append(f"Summary: {hv.summary}")
+                lines.append(f"Total decoy files deployed: {hv.total_honey_files}")
+                lines.append(f"Decoy files read: {hv.files_accessed}, modified: {hv.files_modified}, deleted: {hv.files_deleted}")
+                for d in hv.details:
+                    mitre_str = f" [MITRE {d.mitre_attack}]" if d.mitre_attack else ""
+                    lines.append(f"  - {d.path} ({d.action.upper()}): {d.category} (Severity: {d.severity}){mitre_str}")
+                lines.append("NOTE: Honey file access is a DEFINITIVE indicator of malicious intent (credential harvesting/data exfiltration).")
 
         # 5. Heuristic & Kernel/System Indicators
         if context.heuristic_intent:
@@ -458,8 +502,8 @@ class LLMAnalyzerTool(BasePipelineTool):
             if provider == "Ollama":
                 extra_params["extra_body"] = {
                     "options": {
-                        "num_predict": 250,
-                        "num_ctx": 1536,
+                        "num_predict": 600,
+                        "num_ctx": 4096,
                         "num_thread": 4,
                         "temperature": 0.1,
                     },
@@ -524,7 +568,7 @@ class LLMAnalyzerTool(BasePipelineTool):
                 if self._is_ollama_available(ollama_v1):
                     try:
                         from openai import AsyncOpenAI
-                        fallback_model = self._detect_best_ollama_model(ollama_v1)
+                        fallback_model = os.getenv("OLLAMA_MODEL") or self._detect_best_ollama_model(ollama_v1)
                         fallback_client = AsyncOpenAI(base_url=ollama_v1, api_key="ollama")
                         res = await fallback_client.chat.completions.create(
                             model=fallback_model,
@@ -536,7 +580,7 @@ class LLMAnalyzerTool(BasePipelineTool):
                             temperature=0.1,
                             timeout=self.timeout,
                             extra_body={
-                                "options": {"num_predict": 250, "num_ctx": 1536, "temperature": 0.1},
+                                "options": {"num_predict": 600, "num_ctx": 4096, "temperature": 0.1},
                                 "keep_alive": "60m",
                             },
                         )
@@ -546,3 +590,60 @@ class LLMAnalyzerTool(BasePipelineTool):
                         context.tools_executed.append(f"Ollama ({fallback_model}) [Fallback]")
                     except Exception as fe:
                         logger.warning(f"Fallback to Ollama failed: {fe}")
+            elif provider == "Ollama":
+                ollama_host = os.getenv("OLLAMA_HOST", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
+                ollama_v1 = ollama_host if ollama_host.endswith("/v1") else ollama_host.rstrip("/") + "/v1"
+                avail = self._get_available_ollama_models(ollama_v1)
+                for alt_m in avail:
+                    if alt_m != model_name:
+                        try:
+                            logger.info(f"Retrying Ollama with alternative installed model: {alt_m}")
+                            res = await client.chat.completions.create(
+                                model=alt_m,
+                                messages=[
+                                    {"role": "system", "content": SYSTEM_PROMPT},
+                                    {"role": "user", "content": user_prompt},
+                                ],
+                                response_format={"type": "json_object"},
+                                temperature=0.1,
+                                timeout=self.timeout,
+                                extra_body={
+                                    "options": {"num_predict": 450, "num_ctx": 2048, "temperature": 0.1},
+                                    "keep_alive": "60m",
+                                },
+                            )
+                            data = self._parse_json_safe(res.choices[0].message.content)
+                            if data:
+                                self._prompt_cache[cache_key] = data
+                                self._populate_context_from_llm_data(context, data)
+                                context.tools_executed.append(f"Ollama ({alt_m})")
+                                return
+                        except Exception:
+                            pass
+
+                # If Ollama completely fails, fall back to Groq if valid key exists
+                groq_key = os.getenv("GROQ_API_KEY", "").strip()
+                if _is_valid_groq_key(groq_key):
+                    try:
+                        from openai import AsyncOpenAI
+                        groq_client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key)
+                        groq_model = CHEAP_GROQ_MODELS_PRIORITY[0]
+                        res = await groq_client.chat.completions.create(
+                            model=groq_model,
+                            messages=[
+                                {"role": "system", "content": SYSTEM_PROMPT},
+                                {"role": "user", "content": user_prompt},
+                            ],
+                            response_format={"type": "json_object"},
+                            temperature=0.1,
+                            timeout=self.timeout,
+                            max_tokens=600,
+                        )
+                        data = self._parse_json_safe(res.choices[0].message.content)
+                        if data:
+                            self._prompt_cache[cache_key] = data
+                            self._populate_context_from_llm_data(context, data)
+                            context.tools_executed.append(f"Groq ({groq_model}) [Fallback]")
+                            return
+                    except Exception as ge:
+                        logger.warning(f"Fallback from Ollama to Groq failed: {ge}")

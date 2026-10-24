@@ -95,11 +95,11 @@ describe('Security Scenarios - Tracee eBPF Event Classification', () => {
       args: [{ name: 'pathname', value: '/etc/shadow' }],
     });
 
-    it('should classify access to /etc/shadow as sensitive_file_access with HIGH severity', () => {
+    it('should classify access to /etc/shadow as honey_file_access with CRITICAL severity', () => {
       const events = TraceeParser.parseRawLogs(shadowAccessLog);
       expect(events.length).toBe(1);
-      expect(events[0].category).toBe('sensitive_file_access');
-      expect(events[0].severity).toBe('HIGH');
+      expect(events[0].category).toBe('honey_file_access');
+      expect(events[0].severity).toBe('CRITICAL');
       expect(events[0].is_security_alert).toBe(true);
     });
   });

@@ -3,7 +3,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
-from app.core.models import ScriptAnalysisVerdict, TraceeAlert
+from app.core.models import ScriptAnalysisVerdict, TraceeAlert, HoneyFileVerdict, HoneyFileDetail
 from app.core.pipeline.base import BasePipelineTool, PipelineContext
 from app.services.sandbox_client import SandboxClient
 
@@ -254,6 +254,34 @@ class ScriptIntentAnalyzerTool(BasePipelineTool):
         is_malicious = highest_severity in ("CRITICAL", "HIGH") or len(detected_signatures) > 0 or any(a.is_security_alert for a in alerts)
 
         summary_parts = []
+        # Parse honey file verdict from sandbox response
+        honey_raw = res.get("honey_file_verdict")
+        honey_verdict = None
+        if honey_raw and honey_raw.get("triggered"):
+            honey_verdict = HoneyFileVerdict(
+                triggered=True,
+                total_honey_files=honey_raw.get("total_honey_files", 0),
+                files_accessed=honey_raw.get("files_accessed", 0),
+                files_modified=honey_raw.get("files_modified", 0),
+                files_deleted=honey_raw.get("files_deleted", 0),
+                highest_severity=honey_raw.get("highest_severity", "HIGH"),
+                summary=honey_raw.get("summary", ""),
+                details=[HoneyFileDetail(**d) for d in honey_raw.get("details", [])],
+            )
+
+            is_malicious = True
+            if honey_verdict.highest_severity == "CRITICAL":
+                highest_severity = "CRITICAL"
+            elif highest_severity not in ("CRITICAL",):
+                highest_severity = "HIGH"
+
+            for detail in honey_verdict.details:
+                if detail.path not in accessed_files:
+                    accessed_files.append(detail.path)
+                sig = f"HoneyFile:{detail.category}"
+                if sig not in detected_signatures:
+                    detected_signatures.append(sig)
+
         if is_malicious:
             summary_parts.append(f"Aqua Tracee eBPF flagged script '{script_name}' as {highest_severity} risk.")
             if detected_signatures:
@@ -262,6 +290,9 @@ class ScriptIntentAnalyzerTool(BasePipelineTool):
                 summary_parts.append(f"Accessed sensitive paths: {', '.join(accessed_files)}.")
             if network_conns:
                 summary_parts.append(f"Network connections attempted: {', '.join(network_conns)}.")
+            if honey_verdict and honey_verdict.triggered:
+                summary_parts.append(f"🍯 HONEY FILE TRAP: {honey_verdict.summary}")
+                summary_parts.append("This is a definitive indicator of malicious intent.")
         else:
             summary_parts.append(f"Script '{script_name}' executed cleanly in sandbox with no security violations detected.")
 
@@ -279,6 +310,7 @@ class ScriptIntentAnalyzerTool(BasePipelineTool):
             script_output=script_output,
             source="tracee_ebpf",
             execution_time_ms=duration_ms,
+            honey_file_verdict=honey_verdict,
         )
 
     async def process(self, context: PipelineContext) -> None:

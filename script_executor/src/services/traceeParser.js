@@ -1,3 +1,4 @@
+const { HONEY_FILE_PATHS, normalizeContainerPath } = require('./honeyFileService');
 const fs = require('fs');
 const readline = require('readline');
 const logger = require('../utils/logger');
@@ -141,8 +142,9 @@ class TraceeParser {
 
     const isSignature = SIGNATURE_EVENTS.has(eventName) || raw.category === 'signatures' || raw.category === 'alerts';
 
-    // Ignore known host daemon noise unless it's a signature security detection
-    if (!isSignature && IGNORED_HOST_PROCESSES.has(processName)) {
+    // Ignore known host daemon noise only if the event did NOT originate from a container and is not a signature detection
+    const isContainerEvent = Boolean(raw.container?.id || raw.containerId || raw.container?.name);
+    if (!isSignature && !isContainerEvent && IGNORED_HOST_PROCESSES.has(processName)) {
       return null;
     }
     
@@ -177,8 +179,17 @@ class TraceeParser {
       isSecurityAlert = true;
     } else if (['openat', 'open', 'security_file_open', 'read', 'write', 'unlink'].includes(eventName)) {
       category = 'file_access';
-      const accessedPath = args.pathname || args.path || args.filename || '';
-      if (typeof accessedPath === 'string' && SENSITIVE_PATHS.some((p) => accessedPath.startsWith(p))) {
+      const rawPath = args.pathname || args.path || args.filename || '';
+      // Normalize path: strip Docker overlay filesystem or proc root prefix if present
+      const accessedPath = typeof normalizeContainerPath === 'function'
+        ? normalizeContainerPath(rawPath)
+        : rawPath;
+
+      if (typeof accessedPath === 'string' && HONEY_FILE_PATHS.some((hp) => accessedPath === hp || accessedPath.startsWith(hp + '/'))) {
+        severity = 'CRITICAL';
+        category = 'honey_file_access';
+        isSecurityAlert = true;
+      } else if (typeof accessedPath === 'string' && SENSITIVE_PATHS.some((p) => accessedPath === p || accessedPath.startsWith(p + '/'))) {
         severity = 'HIGH';
         category = 'sensitive_file_access';
         isSecurityAlert = true;

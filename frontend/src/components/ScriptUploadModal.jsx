@@ -12,7 +12,7 @@ import {
   Trash2,
   Sparkles
 } from 'lucide-react';
-import { SAMPLE_MALICIOUS_SCRIPT, SAMPLE_BENIGN_SCRIPT } from '../utils/sampleScripts';
+import { SAMPLE_MALICIOUS_SCRIPT, SAMPLE_HONEYPOT_TRAP_SCRIPT, SAMPLE_SSH_CLOUD_STEALER_SCRIPT, SAMPLE_TAMPER_MODIFY_SCRIPT, SAMPLE_WIPE_RANSOM_SCRIPT, SAMPLE_BENIGN_SCRIPT } from '../utils/sampleScripts';
 
 export default function ScriptUploadModal({
   isOpen,
@@ -112,7 +112,7 @@ export default function ScriptUploadModal({
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2 font-mono">
               Quick Test Templates
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <button
                 type="button"
                 onClick={() => {
@@ -127,6 +127,74 @@ export default function ScriptUploadModal({
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-sans">
                   Simulates netcat reverse shell + shadow exfil
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setScriptName('credential_harvester.sh');
+                  setScriptContent(SAMPLE_HONEYPOT_TRAP_SCRIPT);
+                }}
+                className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 hover:border-amber-400 text-left transition-all group"
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 font-mono">
+                  <span className="text-sm">🍯</span>
+                  <span>Honey File Stealer</span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-sans">
+                  Harvests SSH, AWS, K8s decoy creds & alters .env
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setScriptName('ssh_cloud_stealer.sh');
+                  setScriptContent(SAMPLE_SSH_CLOUD_STEALER_SCRIPT);
+                }}
+                className="p-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 hover:border-amber-400 text-left transition-all group"
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 font-mono">
+                  <span>🔑</span>
+                  <span>SSH & Cloud Stealer</span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-sans">
+                  Dumps Tier 1 id_rsa, AWS creds, K8s & TLS key
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setScriptName('config_tamper.sh');
+                  setScriptContent(SAMPLE_TAMPER_MODIFY_SCRIPT);
+                }}
+                className="p-2.5 rounded-2xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/60 hover:border-orange-400 text-left transition-all group"
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold text-orange-800 dark:text-orange-300 font-mono">
+                  <span>⚡</span>
+                  <span>Config Tamper & Backdoor</span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-sans">
+                  Alters .env, authorized_keys & crontab (hash mismatch)
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setScriptName('wipe_ransom.sh');
+                  setScriptContent(SAMPLE_WIPE_RANSOM_SCRIPT);
+                }}
+                className="p-2.5 rounded-2xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/60 hover:border-purple-400 text-left transition-all group"
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold text-purple-800 dark:text-purple-300 font-mono">
+                  <span>💥</span>
+                  <span>Ransomware & Deletion</span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-sans">
+                  Deletes SSH host key, Vault token & Git creds
                 </div>
               </button>
 

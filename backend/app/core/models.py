@@ -107,6 +107,27 @@ class TraceeAlert(BaseModel):
     mitre_attack: Optional[str] = Field(default=None, description="MITRE ATT&CK technique tag")
 
 
+class HoneyFileDetail(BaseModel):
+    path: str = Field(..., description="Absolute path of the honey file")
+    action: Literal["read", "modified", "deleted"] = Field(..., description="What the script did")
+    category: str = Field(default="unknown", description="Threat category (e.g. ssh_credential_theft)")
+    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW", "SAFE"] = Field(default="HIGH")
+    mitre_attack: Optional[str] = Field(default=None, description="MITRE ATT&CK technique ID")
+    tier: int = Field(default=2, description="Threat tier (1=CRITICAL, 2=HIGH, 3=MEDIUM)")
+    detected_by_process: str = Field(default="unknown", description="Process that accessed the file")
+    tracee_event: Optional[str] = Field(default=None, description="eBPF event name that detected access")
+
+
+class HoneyFileVerdict(BaseModel):
+    triggered: bool = Field(default=False, description="Whether any honey file was accessed/modified/deleted")
+    total_honey_files: int = Field(default=0, description="Total number of honey files deployed in sandbox")
+    files_accessed: int = Field(default=0, description="Number of honey files read")
+    files_modified: int = Field(default=0, description="Number of honey files modified (hash mismatch)")
+    files_deleted: int = Field(default=0, description="Number of honey files deleted")
+    highest_severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW", "SAFE"] = Field(default="SAFE")
+    summary: str = Field(default="", description="Human-readable summary of honey file interactions")
+    details: List[HoneyFileDetail] = Field(default_factory=list, description="Per-file access details with MITRE mappings")
+
 class ScriptAnalysisVerdict(BaseModel):
     script_name: str = Field(default="script.sh", description="Name of the detected script file")
     script_detected_in_command: bool = Field(
@@ -137,6 +158,9 @@ class ScriptAnalysisVerdict(BaseModel):
         default="tracee_ebpf", description="Analysis engine that produced this verdict"
     )
     execution_time_ms: int = Field(default=0, description="Sandbox run duration in ms")
+    honey_file_verdict: Optional[HoneyFileVerdict] = Field(
+        default=None, description="Honey file trap analysis — decoy credential/secret file access detection"
+    )
 
 
 

@@ -29,6 +29,15 @@ const config = {
     events: process.env.TRACEE_EVENTS || 'default,execve,execveat,openat,open,security_file_open,ptrace,connect,socket,bind,memfd_create,init_module,finit_module,bpf',
   },
 
+  // Honey file trap settings
+  honeyFile: {
+    enabled: process.env.HONEYFILE_ENABLED !== 'false',  // ON by default
+    image: process.env.HONEYFILE_IMAGE || 'sandbox-honeypot:latest',
+    manifestPath: process.env.HONEYFILE_MANIFEST_PATH
+      || path.join(__dirname, '../../docker/honey-manifest.json'),
+    hashCheckTimeoutMs: parseInt(process.env.HONEYFILE_HASH_TIMEOUT_MS, 10) || 3000,
+  },
+
   dockerBinary: process.env.DOCKER_BINARY || 'docker',
   maxScriptSizeBytes: parseInt(process.env.MAX_SCRIPT_SIZE_BYTES, 10) || 1024 * 1024, // 1MB
 };

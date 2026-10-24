@@ -1,0 +1,4 @@
+# Root crontab - Alpine Busybox cron
+# HONEYTRAP:CANARY:a3f8b2c1 — This is a decoy file for security analysis
+* * * * * /usr/local/bin/backup-sync.sh >/dev/null 2>&1
+0 2 * * * /root/maintenance.sh --token=secret_cron_tok_99812

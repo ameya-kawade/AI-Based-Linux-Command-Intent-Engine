@@ -1,0 +1,6 @@
+[user]
+    name = Infrastructure Automation Bot
+    email = infra-bot@internal.corp
+[credential]
+    helper = store
+# HONEYTRAP:CANARY:a3f8b2c1 — This is a decoy file for security analysis

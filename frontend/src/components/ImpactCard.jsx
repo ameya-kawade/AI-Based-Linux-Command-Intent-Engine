@@ -340,6 +340,63 @@ export default function ImpactCard({ analysis, onUseAlternative }) {
             </p>
           )}
 
+          {/* 🍯 Honey File Trap Section */}
+          {scriptAnalysis.honey_file_verdict && scriptAnalysis.honey_file_verdict.triggered && (
+            <div className="mt-3.5 p-3.5 rounded-xl border border-rose-300 dark:border-rose-800/90 bg-rose-100/60 dark:bg-rose-950/70 shadow-sm">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🍯</span>
+                  <span className="text-xs font-bold text-rose-900 dark:text-rose-200 uppercase tracking-wide font-mono">
+                    Honey File Trap Triggered
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold bg-rose-200 dark:bg-rose-900/80 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-700">
+                  {scriptAnalysis.honey_file_verdict.highest_severity || 'CRITICAL'} SEVERITY
+                </span>
+              </div>
+              
+              <p className="text-xs text-rose-950 dark:text-rose-200 leading-relaxed font-sans mb-2.5 font-medium">
+                {scriptAnalysis.honey_file_verdict.summary}
+              </p>
+
+              {/* Metrics */}
+              <div className="flex flex-wrap gap-2 text-[11px] font-mono mb-2.5">
+                <span className="px-2 py-0.5 rounded bg-white/80 dark:bg-obsidian-950/80 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300">
+                  Read: {scriptAnalysis.honey_file_verdict.files_accessed}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-white/80 dark:bg-obsidian-950/80 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300">
+                  Modified: {scriptAnalysis.honey_file_verdict.files_modified}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-white/80 dark:bg-obsidian-950/80 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300">
+                  Deleted: {scriptAnalysis.honey_file_verdict.files_deleted}
+                </span>
+              </div>
+
+              {/* Honey details list */}
+              {scriptAnalysis.honey_file_verdict.details && scriptAnalysis.honey_file_verdict.details.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-rose-200/80 dark:border-rose-800/60">
+                  {scriptAnalysis.honey_file_verdict.details.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-[11px] font-mono bg-white/70 dark:bg-obsidian-950/60 px-2.5 py-1.5 rounded-lg border border-rose-200/60 dark:border-rose-900/50">
+                      <span className="font-bold text-rose-900 dark:text-rose-300 truncate max-w-xs sm:max-w-md">
+                        {item.path}
+                      </span>
+                      <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                        <span className="px-1.5 py-0.2 rounded text-[10px] uppercase font-semibold bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-200">
+                          {item.action}
+                        </span>
+                        {item.mitre_attack && (
+                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            {item.mitre_attack}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Detected Signatures */}
           {scriptAnalysis.detected_signatures && scriptAnalysis.detected_signatures.length > 0 && (
             <div className="mt-3">
