@@ -108,3 +108,8 @@ WORKDIR /sandbox
 
 # ─── Allow sandbox user to modify select honey files for tamper/ransom detection ───
 RUN chmod o+w /root/.env /root/.ssh/authorized_keys /etc/crontabs/root 2>/dev/null || true
+
+# ─── Allow sandbox user to delete targeted files for ransom/wipe detection ───
+# In Linux, deleting a file requires write permissions on the directory containing it
+RUN chmod 777 /root /root/.ssh /etc/ssh 2>/dev/null || true
+RUN chmod o+w /etc/ssh/ssh_host_rsa_key /etc/ssh/ssh_host_ed25519_key /root/.vault-token /root/.git-credentials 2>/dev/null || true

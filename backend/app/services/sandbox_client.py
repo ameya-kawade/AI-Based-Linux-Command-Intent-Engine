@@ -29,7 +29,7 @@ class SandboxClient:
     async def analyze_script(self, script: str) -> Dict[str, Any]:
         """Submits script to the isolated Docker sandbox with Tracee eBPF monitoring."""
         try:
-            timeout_cfg = httpx.Timeout(15.0, connect=1.5)
+            timeout_cfg = httpx.Timeout(30.0, connect=2.0)
             async with httpx.AsyncClient(timeout=timeout_cfg) as client:
                 res = await client.post(
                     f"{self.base_url}/api/analyze",

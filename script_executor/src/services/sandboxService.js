@@ -55,10 +55,27 @@ class SandboxService {
         hostMountDir: runDir,
       });
 
-      // 5. Allow brief initialization time for Tracee eBPF kernel probes to attach
-      const initWaitMs = options.traceeInitWaitMs || config.tracee.initWaitMs;
-      logger.debug(`[${execId}] Waiting ${initWaitMs}ms for Tracee eBPF probe initialization...`);
-      await new Promise((resolve) => setTimeout(resolve, initWaitMs));
+      // 5. Allow sufficient initialization time for Tracee eBPF kernel probes to attach
+      const maxWaitMs = Math.max(options.traceeInitWaitMs || config.tracee.initWaitMs || 5000, 4500);
+      logger.debug(`[${execId}] Waiting up to ${maxWaitMs}ms for Tracee eBPF probe initialization...`);
+      const traceePidPath = path.join(runDir, 'tracee.pid');
+      const startWait = Date.now();
+      while (Date.now() - startWait < maxWaitMs) {
+        if (fs.existsSync(traceePidPath)) {
+          try {
+            const pidContent = fs.readFileSync(traceePidPath, 'utf8').trim();
+            if (pidContent.length > 0) {
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+              break;
+            }
+          } catch { /* wait */ }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      const elapsed = Date.now() - startWait;
+      if (elapsed < 4000) {
+        await new Promise((resolve) => setTimeout(resolve, 4000 - elapsed));
+      }
 
       // 6. Create unprivileged target sandbox container via Dockerode (seen as 'new' container by Tracee)
       const { containerId } = await DockerService.createSandboxContainer({

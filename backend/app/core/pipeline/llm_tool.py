@@ -375,6 +375,8 @@ class LLMAnalyzerTool(BasePipelineTool):
                 lines.append(f"Script Threat Signatures: {', '.join(sv.detected_signatures)}")
             if sv.accessed_files:
                 lines.append(f"Script Sensitive File Access: {', '.join(sv.accessed_files)}")
+                if sv.is_malicious:
+                    lines.append("SECURITY ALERT: Script accesses or modifies high-value credential/decoy targets.")
             if sv.network_connections:
                 lines.append(f"Script Network Connections: {', '.join(sv.network_connections)}")
             if sv.script_output and sv.script_output.strip() and not sv.script_output.startswith("["):

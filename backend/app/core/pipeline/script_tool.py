@@ -91,24 +91,60 @@ class ScriptIntentAnalyzerTool(BasePipelineTool):
                 )
             )
 
-        # 2. Shadow file / credential exfiltration
-        if "/etc/shadow" in script_content:
-            signatures.append("Shadow Password Hash Access")
-            if severity != "CRITICAL":
-                severity = "HIGH"
-            is_malicious = True
-            accessed_files.append("/etc/shadow")
-            alerts.append(
-                TraceeAlert(
-                    event_name="sensitive_file_read",
-                    category="sensitive_file_access",
-                    severity="HIGH",
-                    is_security_alert=True,
-                    description="Script accesses sensitive credential database: /etc/shadow",
-                    details={"path": "/etc/shadow"},
-                    mitre_attack="T1003.008",
+        # 2. Sensitive / Honey file reconnaissance & exfiltration checks
+        HONEY_FILE_TARGETS = [
+            ("/etc/shadow", "Shadow Password Hash Access", "CRITICAL", "T1003.008"),
+            ("/etc/sudoers", "Sudoers Privilege Escalation Access", "CRITICAL", "T1548.003"),
+            ("/root/.ssh/id_rsa", "SSH Private Key Theft", "CRITICAL", "T1552.004"),
+            ("/root/.ssh/id_ed25519", "SSH Private Key Theft", "CRITICAL", "T1552.004"),
+            ("/root/.ssh/id_ecdsa", "SSH Private Key Theft", "CRITICAL", "T1552.004"),
+            ("/root/.ssh/authorized_keys", "SSH Persistence Key Manipulation", "HIGH", "T1098.004"),
+            ("/root/.ssh/config", "SSH Client Config Exfiltration", "HIGH", "T1018"),
+            ("/root/.ssh/known_hosts", "SSH Known Hosts Reconnaissance", "MEDIUM", "T1018"),
+            ("/root/.aws/credentials", "AWS Cloud Credentials Theft", "CRITICAL", "T1552.001"),
+            ("/root/.aws/config", "AWS Cloud Config Reconnaissance", "MEDIUM", "T1580"),
+            ("/root/.kube/config", "Kubernetes Cluster Credentials Theft", "CRITICAL", "T1552.001"),
+            ("/etc/ssl/private/server.key", "TLS Server Private Key Theft", "CRITICAL", "T1552.004"),
+            ("/etc/ssh/ssh_host_rsa_key", "SSH Host Key Destruction/Theft", "CRITICAL", "T1552.004"),
+            ("/etc/ssh/ssh_host_ed25519_key", "SSH Host Key Destruction/Theft", "CRITICAL", "T1552.004"),
+            ("/root/.vault-token", "HashiCorp Vault Token Theft", "HIGH", "T1552.001"),
+            ("/root/.env", "Environment Secrets Exfiltration/Tamper", "HIGH", "T1552.001"),
+            ("/root/.git-credentials", "Git SCM Credentials Theft", "HIGH", "T1552.001"),
+            ("/etc/crontabs/root", "Cron Persistence Tampering", "HIGH", "T1053.003"),
+            ("/root/.docker/config.json", "Docker Registry Token Theft", "HIGH", "T1552.001"),
+            ("/etc/wireguard/wg0.conf", "WireGuard VPN Private Key Theft", "HIGH", "T1552.004"),
+            ("/root/.gnupg/private-keys-v1.d", "GPG Private Key Theft", "CRITICAL", "T1552.004"),
+            ("/root/.bash_history", "Shell History Reconnaissance", "MEDIUM", "T1552.003"),
+            ("/root/.ash_history", "Shell History Reconnaissance", "MEDIUM", "T1552.003"),
+        ]
+
+        for hpath, sig_name, hsev, hmitre in HONEY_FILE_TARGETS:
+            if hpath in script_content:
+                if sig_name not in signatures:
+                    signatures.append(sig_name)
+                if hpath not in accessed_files:
+                    accessed_files.append(hpath)
+                is_malicious = True
+                if hsev == "CRITICAL":
+                    severity = "CRITICAL"
+                elif hsev == "HIGH" and severity != "CRITICAL":
+                    severity = "HIGH"
+                elif hsev == "MEDIUM" and severity not in ("CRITICAL", "HIGH"):
+                    severity = "MEDIUM"
+
+                is_delete = bool(re.search(r"\brm\s+[^;&|]*" + re.escape(hpath), script_content))
+                action_desc = "deletes/wipes" if is_delete else "accesses"
+                alerts.append(
+                    TraceeAlert(
+                        event_name="sensitive_file_unlink" if is_delete else "sensitive_file_read",
+                        category="honey_file_access",
+                        severity=hsev,
+                        is_security_alert=True,
+                        description=f"Script {action_desc} decoy target: {hpath}",
+                        details={"path": hpath, "action": "deleted" if is_delete else "read"},
+                        mitre_attack=hmitre,
+                    )
                 )
-            )
 
         # 3. Network socket connections
         for match in re.finditer(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", script_content):
@@ -221,11 +257,15 @@ class ScriptIntentAnalyzerTool(BasePipelineTool):
                 if addr and str(addr) not in network_conns:
                     network_conns.append(str(addr))
 
-            if alert.category == "sensitive_file_access":
+            if alert.category in ("sensitive_file_access", "honey_file_access"):
                 args = raw.get("details", {}).get("args", {})
-                path = args.get("pathname") or args.get("path") or ""
+                path = args.get("pathname") or args.get("path") or args.get("filename") or ""
                 if path and str(path) not in accessed_files:
                     accessed_files.append(str(path))
+                if alert.category == "honey_file_access":
+                    sig = f"HoneyFileAccess:{alert.event_name}"
+                    if sig not in detected_signatures:
+                        detected_signatures.append(sig)
 
         # Merge static signatures as defense-in-depth
         static_verdict = self._analyze_script_statically(script_content, script_name)

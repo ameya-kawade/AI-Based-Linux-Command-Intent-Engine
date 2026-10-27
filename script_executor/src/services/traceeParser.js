@@ -177,7 +177,7 @@ class TraceeParser {
       category = 'suspicious_syscall';
       severity = 'HIGH';
       isSecurityAlert = true;
-    } else if (['openat', 'open', 'security_file_open', 'read', 'write', 'unlink'].includes(eventName)) {
+    } else if (['openat', 'open', 'security_file_open', 'read', 'write', 'unlink', 'unlinkat', 'security_inode_unlink'].includes(eventName)) {
       category = 'file_access';
       const rawPath = args.pathname || args.path || args.filename || '';
       // Normalize path: strip Docker overlay filesystem or proc root prefix if present
@@ -250,6 +250,10 @@ class TraceeParser {
       case 'open':
       case 'security_file_open':
         return `Accessed file: ${args.pathname || args.path || args.filename || 'unknown'}`;
+      case 'unlink':
+      case 'unlinkat':
+      case 'security_inode_unlink':
+        return `Deleted or unlinked file: ${args.pathname || args.path || args.filename || 'unknown'}`;
       case 'ptrace':
         return `Invoked ptrace (request: ${args.request || 'unknown'}) for process debugging/tracing`;
       case 'connect':

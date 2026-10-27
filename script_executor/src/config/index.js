@@ -23,10 +23,10 @@ const config = {
   // Tracee eBPF settings
   tracee: {
     image: process.env.TRACEE_IMAGE || 'aquasec/tracee:latest',
-    initWaitMs: parseInt(process.env.TRACEE_INIT_WAIT_MS, 10) || 2500,
+    initWaitMs: parseInt(process.env.TRACEE_INIT_WAIT_MS, 10) || 5000,
     dockerSocket: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock',
     cacheDir: process.env.TRACEE_CACHE_DIR || '/tmp/tracee',
-    events: process.env.TRACEE_EVENTS || 'default,execve,execveat,openat,open,security_file_open,ptrace,connect,socket,bind,memfd_create,init_module,finit_module,bpf',
+    events: process.env.TRACEE_EVENTS || 'default,execve,execveat,openat,open,security_file_open,unlink,unlinkat,security_inode_unlink,ptrace,connect,socket,bind,memfd_create,init_module,finit_module,bpf',
   },
 
   // Honey file trap settings

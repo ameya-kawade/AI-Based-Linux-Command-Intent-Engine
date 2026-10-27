@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "image": "sandbox-honeypot:latest",
   "total_files": 35,
-  "generated_at": "2026-10-19T08:15:37Z",
+  "generated_at": "2026-10-27T04:13:06Z",
   "files": {
     "/etc/shadow": "4e7ce2f6af111a349ef116c632829ddde14aea70118d14d90212dfb3fdb29ceb",
     "/etc/sudoers": "6e9f6384bf6005690f58fcf36d13251e661c3909999df3e14184d9d0857bae90",
